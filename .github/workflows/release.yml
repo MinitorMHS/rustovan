@@ -1,0 +1,171 @@
+name: Build and release binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag matching Cargo.toml (for example, v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check tag against crate version and ensure it is unused
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          set -euo pipefail
+          version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')"
+          expected="v${version}"
+          if [[ "${TAG_NAME}" != "${expected}" ]]; then
+            echo "tag_name must be ${expected} to match Cargo.toml (got ${TAG_NAME})" >&2
+            exit 1
+          fi
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG_NAME}" >/dev/null 2>&1; then
+            echo "Git tag ${TAG_NAME} already exists; choose an unused version tag." >&2
+            exit 1
+          fi
+
+  build:
+    name: Build ${{ matrix.asset_id }}
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform: windows
+            asset_id: windows-x86_64
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            platform: linux
+            asset_id: linux-x86_64
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            platform: linux
+            asset_id: linux-aarch64
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            platform: macos
+            asset_id: macos-x86_64
+          - runner: macos-15
+            target: aarch64-apple-darwin
+            platform: macos
+            asset_id: macos-aarch64
+          - runner: ubuntu-24.04
+            target: aarch64-linux-android
+            platform: android
+            asset_id: android-termux-aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust and target
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux TLS build dependencies
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Install macOS TLS build dependencies
+        if: matrix.platform == 'macos'
+        run: brew install openssl@3 pkg-config
+
+      - name: Configure macOS OpenSSL
+        if: matrix.platform == 'macos'
+        run: |
+          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - name: Install Android NDK
+        if: matrix.platform == 'android'
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;27.2.12479018"
+          ndk_root="${ANDROID_HOME}/ndk/27.2.12479018"
+          test -d "$ndk_root"
+          toolchain="$ndk_root/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "ANDROID_NDK_ROOT=$ndk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ndk_root" >> "$GITHUB_ENV"
+          echo "CC_aarch64_linux_android=$toolchain/aarch64-linux-android24-clang" >> "$GITHUB_ENV"
+          echo "AR_aarch64_linux_android=$toolchain/llvm-ar" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$toolchain/aarch64-linux-android24-clang" >> "$GITHUB_ENV"
+          echo "$toolchain" >> "$GITHUB_PATH"
+
+      - name: Build Android ARM64 release with default backend features
+        if: matrix.platform == 'android'
+        run: cargo build --release --locked --target "${{ matrix.target }}" --features android-cross
+
+      - name: Build release binary
+        if: matrix.platform != 'android'
+        run: cargo build --release --locked --target "${{ matrix.target }}"
+
+      - name: Package Windows binary
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/ton-vanity-rust.exe" dist/
+          Compress-Archive -Path dist/ton-vanity-rust.exe -DestinationPath "dist/ton-vanity-rust-${{ matrix.asset_id }}.zip"
+          Remove-Item dist/ton-vanity-rust.exe
+
+      - name: Package Unix binary
+        if: matrix.platform != 'windows'
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/ton-vanity-rust" dist/ton-vanity-rust
+          chmod 755 dist/ton-vanity-rust
+          tar -C dist -czf "dist/ton-vanity-rust-${{ matrix.asset_id }}.tar.gz" ton-vanity-rust
+          rm dist/ton-vanity-rust
+
+      - name: Upload packaged binary
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ matrix.asset_id }}
+          path: dist/*
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    name: Publish GitHub release
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all platform packages
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: cd dist && sha256sum * > SHA256SUMS.txt
+
+      - name: Create release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: gh release create "$TAG_NAME" dist/* --target "$GITHUB_SHA" --title "$TAG_NAME" --generate-notes

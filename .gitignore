@@ -1,0 +1,35 @@
+# Rust build and release artifacts
+target/
+/target-*/
+/dist/
+
+# Local snapshots and README preview package
+/current-before-undo.zip
+/old.zip
+/ton-vanity-readme-refresh.zip
+
+# Local configuration and logs
+.env
+.env.*
+!.env.example
+*.log
+*.tmp
+
+# Wallet exports and encryption identities
+*.age
+*.mnemonic
+*.seed
+*.wallet
+wallet-secrets*.txt
+age-identity*.txt
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.vs/
+*.suo
+*.user
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

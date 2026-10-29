@@ -1,0 +1,57 @@
+[package]
+name = "ton-vanity-rust"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "TON vanity wallet generator with BIP39 multichain derivation and pluggable CPU/GPU backends"
+
+[features]
+default = ["cpu", "gpu", "opencl", "vulkan", "d3d11"]
+cpu = []
+gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck", "wgpu/dx12", "wgpu/metal"]
+opencl = ["gpu", "dep:libloading"]
+vulkan = ["gpu", "wgpu/vulkan"]
+d3d11 = ["dep:windows", "dep:naga"]
+cuda = []
+sealed-output = ["dep:age"]
+sealed-output-gpu = ["sealed-output", "cpu", "gpu", "opencl", "vulkan", "d3d11"]
+# Android cross-builds bundle OpenSSL because the Android NDK does not provide libssl.
+android-cross = ["cpu", "dep:openssl"]
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+bip39 = { version = "3", features = ["unicode-normalization", "zeroize"] }
+clap = { version = "4", features = ["derive"] }
+ctrlc = "3.4"
+libc = "0.2"
+ed25519-dalek = { version = "2", features = ["zeroize"] }
+hmac = "0.12"
+hex = "0.4"
+rand = "0.9"
+rpassword = "7.3"
+rayon = "1.11"
+sha2 = "0.10"
+ton = "0.4.5"
+unicode-normalization = "0.1.25"
+zeroize = { version = "1", features = ["derive"] }
+age = { version = "0.12.1", default-features = false, optional = true }
+
+# wgpu native backends (OpenGL/GLES, DX12, Metal, Vulkan), plus runtime-loaded OpenCL; CUDA requires the native Toolkit.
+wgpu = { version = "30", default-features = false, features = ["gles", "wgsl"], optional = true }
+pollster = { version = "0.4", optional = true }
+bytemuck = { version = "1.24", features = ["derive"], optional = true }
+libloading = { version = "0.8.9", optional = true }
+naga = { version = "30.0.1", default-features = false, features = ["wgsl-in", "hlsl-out"], optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Console"] }
+windows = { version = "0.62.2", optional = true, features = ["Win32_Foundation", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common"] }
+# Enable sha2 runtime-dispatched ARMv8 SHA-512 on Linux/Android; software fallback remains available.
+[target.'cfg(all(target_arch = "aarch64", any(target_os = "linux", target_os = "android")))'.dependencies]
+sha2 = { version = "0.10", features = ["asm-aarch64"] }
+[target.'cfg(target_os = "android")'.dependencies]
+openssl = { version = "0.10", features = ["vendored"], optional = true }
+[dev-dependencies]
+hex = "0.4"
+

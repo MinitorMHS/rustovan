@@ -1,0 +1,157 @@
+name: Rust CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows build and tests
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
+        with:
+          toolchain: stable
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check cross-check formatting
+        run: cargo fmt --manifest-path tools/rust-ton-crosscheck/Cargo.toml -- --check
+
+      - name: Run unit tests
+        run: cargo test --locked
+
+      - name: Run independent Rust TON address cross-check
+        run: cargo run --manifest-path tools/rust-ton-crosscheck/Cargo.toml --release --locked
+
+      - name: Run strict Clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Check CPU-only configuration
+        run: cargo check --no-default-features --features cpu --locked
+
+      - name: Check default configuration
+        run: cargo check --locked
+
+      - name: Build release executable
+        run: cargo build --release --locked
+
+  linux:
+    name: Linux build and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install OpenSSL build dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
+        with:
+          toolchain: stable
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run unit tests
+        run: cargo test --locked
+
+      - name: Check CPU-only configuration
+        run: cargo check --no-default-features --features cpu --locked
+
+      - name: Check default GPU configuration
+        run: cargo check --locked
+
+      - name: Build release executable
+        run: cargo build --release --locked
+
+  linux-arm64:
+    name: Linux ARM64 build and tests
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install OpenSSL build dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
+        with:
+          toolchain: stable
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run unit tests
+        run: cargo test --locked
+
+      - name: Check CPU-only configuration
+        run: cargo check --no-default-features --features cpu --locked
+
+      - name: Check default GPU configuration
+        run: cargo check --locked
+
+      - name: Build release executable
+        run: cargo build --release --locked
+
+  macos:
+    name: macOS build and tests (Metal compile coverage)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install OpenSSL build dependencies
+        run: brew install openssl@3 pkg-config
+
+      - name: Configure OpenSSL
+        run: |
+          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
+        with:
+          toolchain: stable
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run unit tests
+        run: cargo test --locked
+
+      - name: Check CPU-only configuration
+        run: cargo check --no-default-features --features cpu --locked
+
+      - name: Check macOS GPU configuration
+        run: cargo check --locked
+
+      - name: Build release executable with Metal support
+        run: cargo build --release --locked

@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="390" viewBox="0 0 1200 390" role="img" aria-labelledby="title desc">
+  <title id="title">TON Vanity Rust search pipeline</title>
+  <desc id="desc">Entropy is used to create a BIP39 mnemonic, which passes through PBKDF2 and SLIP-0010 Ed25519 derivation to TON wallet construction and address matching. GPU acceleration applies to PBKDF2 only; the CPU remains the correctness reference.</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b1d32"/><stop offset="1" stop-color="#112d4a"/></linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#49c8ed"/><stop offset="1" stop-color="#8b80ff"/></linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0 0 7 3 0 6Z" fill="#6bcde9"/></marker>
+  </defs>
+  <rect width="1200" height="390" rx="24" fill="#071426"/>
+  <text x="44" y="47" font-family="Inter,Segoe UI,Arial,sans-serif" fill="#e9f5ff" font-size="22" font-weight="700">How a search works</text>
+  <text x="44" y="73" font-family="Inter,Segoe UI,Arial,sans-serif" fill="#9eb9d2" font-size="14">GPU backends accelerate PBKDF2; the CPU performs wallet derivation, address construction, and matching.</text>
+  <g font-family="Inter,Segoe UI,Arial,sans-serif" text-anchor="middle">
+    <g transform="translate(36 126)">
+      <rect width="164" height="104" rx="15" fill="url(#panel)" stroke="#2d6685"/>
+      <circle cx="24" cy="23" r="12" fill="#174b68"/><text x="24" y="28" fill="#9beaff" font-size="12" font-weight="700">1</text>
+      <text x="82" y="47" fill="#f0f7ff" font-size="15" font-weight="700">OS entropy</text>
+      <text x="82" y="71" fill="#a9c2d8" font-size="12">Secure randomness</text>
+    </g>
+    <g transform="translate(240 126)">
+      <rect width="164" height="104" rx="15" fill="url(#panel)" stroke="#2d6685"/>
+      <circle cx="24" cy="23" r="12" fill="#174b68"/><text x="24" y="28" fill="#9beaff" font-size="12" font-weight="700">2</text>
+      <text x="82" y="47" fill="#f0f7ff" font-size="15" font-weight="700">BIP39 mnemonic</text>
+      <text x="82" y="71" fill="#a9c2d8" font-size="12">12 English words</text>
+    </g>
+    <g transform="translate(444 126)">
+      <rect width="164" height="104" rx="15" fill="url(#panel)" stroke="#3b7eb0" stroke-width="1.5"/>
+      <circle cx="24" cy="23" r="12" fill="#175f83"/><text x="24" y="28" fill="#b7f2ff" font-size="12" font-weight="700">3</text>
+      <text x="82" y="47" fill="#f0f7ff" font-size="15" font-weight="700">PBKDF2</text>
+      <text x="82" y="71" fill="#a9c2d8" font-size="12">GPU may accelerate</text>
+    </g>
+    <g transform="translate(648 126)">
+      <rect width="164" height="104" rx="15" fill="url(#panel)" stroke="#4e69a8"/>
+      <circle cx="24" cy="23" r="12" fill="#343d80"/><text x="24" y="28" fill="#d4ceff" font-size="12" font-weight="700">4</text>
+      <text x="82" y="47" fill="#f0f7ff" font-size="15" font-weight="700">SLIP-0010</text>
+      <text x="82" y="71" fill="#a9c2d8" font-size="12">Ed25519 derivation</text>
+    </g>
+    <g transform="translate(852 126)">
+      <rect width="164" height="104" rx="15" fill="url(#panel)" stroke="#4e69a8"/>
+      <circle cx="24" cy="23" r="12" fill="#343d80"/><text x="24" y="28" fill="#d4ceff" font-size="12" font-weight="700">5</text>
+      <text x="82" y="47" fill="#f0f7ff" font-size="15" font-weight="700">TON wallet</text>
+      <text x="82" y="71" fill="#a9c2d8" font-size="12">Contract + address</text>
+    </g>
+    <g transform="translate(1056 126)">
+      <rect width="108" height="104" rx="15" fill="url(#panel)" stroke="#4e9b9b"/>
+      <circle cx="24" cy="23" r="12" fill="#175f60"/><text x="24" y="28" fill="#b7fff4" font-size="12" font-weight="700">6</text>
+      <text x="54" y="47" fill="#f0f7ff" font-size="14" font-weight="700">Match</text>
+      <text x="54" y="71" fill="#a9c2d8" font-size="11">Prefix / suffix</text>
+    </g>
+  </g>
+  <g fill="none" stroke="#6bcde9" stroke-width="2.5" marker-end="url(#arrow)">
+    <path d="M200 178H232"/><path d="M404 178H436"/><path d="M608 178H640"/><path d="M812 178H844"/><path d="M1016 178H1048"/>
+  </g>
+  <path d="M526 248V272H730V248" fill="none" stroke="url(#accent)" stroke-width="2.5" stroke-dasharray="6 6"/>
+  <rect x="385" y="283" width="486" height="61" rx="13" fill="#10253c" stroke="#375a83"/>
+  <text x="628" y="307" font-family="Inter,Segoe UI,Arial,sans-serif" fill="#d8eaff" text-anchor="middle" font-size="14" font-weight="700">Correctness reference: CPU</text>
+  <text x="628" y="328" font-family="Inter,Segoe UI,Arial,sans-serif" fill="#a9c2d8" text-anchor="middle" font-size="12">GPU-found matches are re-derived on the CPU before return.</text>
+</svg>

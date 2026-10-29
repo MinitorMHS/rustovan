@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">TON Vanity Rust</title>
+  <desc id="desc">A dark technical banner with a stylized TON-inspired geometric crystal and address-search motif.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071426"/>
+      <stop offset="1" stop-color="#102c4d"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#75e7ff"/>
+      <stop offset="1" stop-color="#1687d9"/>
+    </linearGradient>
+    <linearGradient id="violet" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#b6a7ff"/>
+      <stop offset="1" stop-color="#6155d9"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#9bc8ed" stroke-opacity=".08" stroke-width="1"/>
+    </pattern>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="9" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="1200" height="360" rx="28" fill="url(#bg)"/>
+  <rect width="1200" height="360" rx="28" fill="url(#grid)"/>
+  <circle cx="960" cy="180" r="132" fill="#1b79bd" opacity=".12"/>
+  <circle cx="960" cy="180" r="96" fill="none" stroke="#75e7ff" stroke-opacity=".24" stroke-width="1.5"/>
+  <circle cx="960" cy="180" r="68" fill="none" stroke="#b6a7ff" stroke-opacity=".3" stroke-dasharray="5 8" stroke-width="1.5"/>
+  <g filter="url(#glow)" transform="translate(960 180)">
+    <path d="M0 -76 66 -38 66 38 0 76 -66 38 -66 -38Z" fill="none" stroke="url(#cyan)" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M0 -76V0L66 38M0 0-66 38M0 0 0 76" fill="none" stroke="url(#violet)" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M-66 -38 0 0 66 -38" fill="none" stroke="#e4faff" stroke-opacity=".8" stroke-width="3"/>
+    <circle cx="0" cy="0" r="8" fill="#fff"/>
+  </g>
+  <g fill="#75e7ff" opacity=".85">
+    <circle cx="835" cy="88" r="3"/><circle cx="1084" cy="104" r="2.5"/><circle cx="1096" cy="253" r="3"/>
+    <circle cx="852" cy="270" r="2"/><circle cx="1020" cy="66" r="2"/>
+  </g>
+  <g font-family="Inter,Segoe UI,Arial,sans-serif">
+    <text x="72" y="104" fill="#8feaff" font-size="16" font-weight="700" letter-spacing="4">VANITY WALLET TOOLING</text>
+    <text x="68" y="166" fill="#ffffff" font-size="48" font-weight="800">TON Vanity Rust</text>
+    <text x="72" y="207" fill="#c6d9ed" font-size="20">Search newly generated TON wallets for a matching address.</text>
+    <rect x="72" y="246" width="116" height="34" rx="17" fill="#153e5d" stroke="#3d9cc7" stroke-opacity=".8"/>
+    <text x="130" y="268" text-anchor="middle" fill="#a5efff" font-size="13" font-weight="700">CPU SEARCH</text>
+    <rect x="200" y="246" width="150" height="34" rx="17" fill="#29285b" stroke="#8d80e8" stroke-opacity=".8"/>
+    <text x="275" y="268" text-anchor="middle" fill="#d2caff" font-size="13" font-weight="700">GPU-ASSISTED</text>
+    <text x="72" y="322" fill="#9fb7ce" font-size="13">UNDER DEVELOPMENT · REVIEW SECURITY AND VALIDATION NOTES BEFORE USE</text>
+  </g>
+</svg>
