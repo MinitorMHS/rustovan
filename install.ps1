@@ -79,8 +79,20 @@ function Save-ReleaseAsset([long] $AssetId, [string] $Destination, [string] $Tok
         if ($null -eq $response) { throw }
         $status = [int]$response.StatusCode
         if ($status -lt 300 -or $status -ge 400) { throw }
-        $location = [string]$response.Headers['Location']
-        if ([string]::IsNullOrWhiteSpace($location)) { throw 'GitHub asset redirect did not include a Location header.' }
+        # PowerShell 7 exposes an HttpResponseMessage; Windows PowerShell 5.1
+        # exposes an HttpWebResponse. Their header collections use different APIs.
+        $location = $null
+        if ($response -is [System.Net.Http.HttpResponseMessage]) {
+            if ($null -ne $response.Headers.Location) {
+                $location = $response.Headers.Location.AbsoluteUri
+            }
+        }
+        else {
+            try { $location = [string]$response.Headers['Location'] } catch { $location = $null }
+        }
+        if ([string]::IsNullOrWhiteSpace($location)) {
+            throw "GitHub asset redirect did not include a readable Location header (HTTP $status; response type: $($response.GetType().FullName))."
+        }
         $redirectUri = [Uri]$location
         if ($redirectUri.Scheme -ne 'https') { throw 'GitHub returned a non-HTTPS asset redirect.' }
         # Deliberately omit GitHub authorization headers on the signed CDN URL.
