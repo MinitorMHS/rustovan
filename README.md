@@ -231,6 +231,8 @@ Run [Build and release binaries](.github/workflows/release.yml) manually from Gi
 
 The workflow is configured to build Windows x64 and ARM64; Linux amd64, ARM64, hard-float ARMv7, and RV64GC; Linux musl amd64 and ARM64; macOS Intel and Apple Silicon; and Android/Termux ARM64 packages, then publish SHA-256 checksums. The musl packages are separate from the glibc Linux packages. Linux cross-target builds use the `cross-openssl` feature to build OpenSSL for their target; Android uses `android-cross` and targets Android API 30 or newer. Other targets use Cargo's default backend features. Which backends can run still depends on the target OS, GPU, and runtime libraries. Use `publish_release: false` to build and upload platform artifacts without creating a GitHub release. Android GPU runtime behavior still needs device testing. GitHub Actions must be allowed to create releases with `contents: write` when publishing.
 
+The published v0.1.0 release predates the expanded build matrix. Its current packages cover Windows x86_64, Linux x86_64 and ARM64, macOS x86_64 and ARM64, and Android ARM64. It does not yet contain Windows ARM64, Linux ARMv7, RISC-V, or musl packages; those require a later release.
+
 ## Development and validation
 
 Run project tests and formatting checks:
@@ -246,7 +248,12 @@ The CI workflow also checks the CPU-only build, compiles the default configurati
 ## Project documentation
 
 - [Wallet contract registry](contracts/registry.md)
+- [Production-readiness plan](RELEASE_PLAN.md)
+- [Build notes](BUILD_NOTES.md)
+- [Validation strategy](docs/validation.md)
 - [GPU roadmap](docs/gpu-roadmap.md)
+- [Shader kernel notes](shaders/README.md)
+- [CUDA backend notes](cuda/README.md)
 - [Dependency license inventory](docs/dependency-license-inventory.md)
 - [Security policy](SECURITY.md)
 - [Current readiness status](STATUS.md)
@@ -258,4 +265,3 @@ The CI workflow also checks the CPU-only build, compiles the default configurati
 **TON Vanity Rust** · Search locally. Validate carefully. Protect your secrets.
 
 </div>
-

@@ -1,19 +1,16 @@
 # GPU kernels
 
-## `pbkdf2.wgsl`
+## pbkdf2.wgsl
 
-Production-oriented first-stage compute kernel for BIP39 PBKDF2-HMAC-SHA512 (2048 rounds).
-It is backend-neutral WGSL and is dispatched through `wgpu` on Vulkan or OpenGL/GLES.
+This backend-neutral WGSL compute kernel implements the BIP39 PBKDF2-HMAC-SHA512 stage with 2048 rounds. The wgpu path targets Vulkan, Direct3D 12, Metal, and GL/GLES where enabled. Windows Direct3D 11 translates the shared WGSL through Naga to HLSL. OpenCL and CUDA use separate backend implementations.
 
-The kernel was checked against the canonical BIP39 `TREZOR` seed by reproducing its
-64-bit arithmetic in a host-side reference test. Runtime GPU validation is still required
-on actual hardware before a release can claim cross-vendor hardware support.
+The kernel is checked against the canonical BIP39 TREZOR seed and CPU reference outputs. Recorded runtime acceptance includes OpenGL/OpenCL/DX11 on Intel HD Graphics 4400 and OpenGL on Android Adreno 618. Termux Vulkan passes known-answer parity and very small wallet searches but is extremely slow; macOS Metal has compile/test CI coverage without a physical runtime result. CUDA remains unverified. See [docs/validation.md](../docs/validation.md) for the evidence and limits.
 
-## Planned next kernels
+## Planned device-side stages
 
-- `slip10_ed25519.wgsl`: derive `m/44'/607'/account'` and Ed25519 public keys.
-- `ton_state_init.wgsl`: serialize the standard wallet data cells and hash StateInit.
-- `match.wgsl`: compare raw account IDs before friendly-address base64/CRC formatting.
+- GPU-native BIP39 entropy/checksum generation.
+- slip10_ed25519.wgsl for hardened derivation and public-key generation.
+- ton_state_init.wgsl for wallet data cells and StateInit hashing.
+- A matcher over raw 32-byte account IDs and a device-side result queue.
 
-The final matcher should operate on the raw 32-byte account ID rather than computing
-friendly-address strings for every candidate.
+Wallet derivation, TON hashing/address construction, and matching remain CPU stages. These kernels are roadmap items, not implemented production features.

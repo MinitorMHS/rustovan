@@ -21,6 +21,12 @@ V5R1/W5 is the latest official general-purpose wallet in the TON wallet history.
 
 The upstream Rust TON wallet enum also exposes Highload wallet contracts. They are intentionally not included in the normal vanity-wallet selector because they are specialized contract families rather than ordinary user wallet versions. The architecture can add them later with explicit wallet-ID/data-layout rules.
 
+## Project-supported WalletTg contract
+
+WalletTg is implemented as a specialized project-supported contract, separate from the standard wallet-history table above. The Rust source pins trampoline code hash 9149ae51c1e4689710cebf7830297b16acfbadb363a920a537893e7ffeeca768 and checks it in a deterministic address regression test.
+
+The current implementation uses the fixed account path m/44'/607'/0', an empty BIP39 passphrase, mainnet only, and subwallet ID 0x7FFF7F11. Nonzero --account values, --testnet, and a non-empty passphrase are rejected. Existing-mnemonic import, 24-word rotation import, and key-rotation operations are not implemented. This is implementation evidence; independent upstream fixture provenance remains a release gate.
+
 ## Sources
 
 - Official TON wallet history: `https://docs.ton.org/contracts/standard/wallets/history`

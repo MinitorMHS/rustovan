@@ -2,20 +2,18 @@
 
 This directory contains the NVIDIA-specific CUDA implementation of the BIP39 PBKDF2-HMAC-SHA512 stage.
 
-## Build
+## Build requirements
 
-The Rust `cuda` feature invokes `nvcc` from `build.rs` and links the resulting static CUDA object. CUDA Toolkit 13.x is the current development target. NVIDIA documents `nvcc` as the compiler for `.cu` device code and the CUDA runtime as the host API. See the official CUDA Programming Guide.
+The Rust cuda feature invokes nvcc from build.rs and links the resulting static CUDA object. The documented development target is CUDA Toolkit 13.x; confirm the installed Toolkit and driver compatibility before building. The backend is optional. Builds that omit the cuda feature do not require nvcc or CUDA runtime libraries.
 
-Example:
+On Windows the build script selects nvcc.exe, MSVC object/library formats, and the CUDA lib/x64 runtime directory. The compiler packages the CUDA object into a static library.
 
-```bash
-cargo run --release --features cuda -- --backend cuda --prefix UQ
-```
+## Run
 
-The backend is optional. Builds without `--features cuda` do not require CUDA.
+    cargo run --release --features cuda -- --backend cuda --prefix UQ
 
-## Scope of this stage
+An explicitly requested CUDA backend must fail with a useful error if its compiler, runtime, device, or kernel is unavailable. It must not silently substitute CPU work.
 
-CUDA currently accelerates BIP39 PBKDF2-HMAC-SHA512. SLIP-0010, Ed25519 and TON StateInit hashing remain CPU verified until their CUDA kernels are added and cross-checked against the Rust reference implementation.
+## Scope and validation
 
-The Rust layer must fail closed on CUDA initialization/runtime errors; it must never silently substitute CPU work for an explicitly requested CUDA backend.
+CUDA currently accelerates BIP39 PBKDF2-HMAC-SHA512. SLIP-0010, Ed25519, TON wallet construction, StateInit hashing, and vanity matching remain CPU stages. The latest hosted CI matrix does not build the opt-in CUDA feature. No CUDA Toolkit build or NVIDIA runtime acceptance is recorded as of 2026-11-01; see [STATUS.md](../STATUS.md) before relying on this backend.

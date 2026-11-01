@@ -1,5 +1,7 @@
 # Validation strategy
 
+**Evidence snapshot: 2026-11-01.** Current hosted build/test evidence is [Rust CI run 41292225784](https://github.com/MinitorMHS/rustovan/actions/runs/41292225784). It passed all nine jobs, including the expanded cross-target matrix and macOS compile/test coverage. These results apply to the committed revision; subsequent code changes require their own CI run. They do not establish GPU runtime support on every device.
+
 ## CPU reference pipeline
 
 The CPU path is the correctness reference:
@@ -66,6 +68,6 @@ Unit checks cover default mainnet/testnet values and reject subwallets above the
 
 ## Hardware and release validation
 
-The Intel HD 4400 OpenGL PBKDF2 acceptance matrix passed on this Windows 10 host in the optimized build. Vulkan SDK `vulkaninfo --summary` reports no driver/ICD, and Intel lists Vulkan as unavailable for HD Graphics 4400 on Windows; CUDA still lacks a compatible toolkit/device here. Repeat the matrix on another supported Windows GPU/vendor before making a broader hardware claim. Record OS, driver, device, backend selected, batch size, self-test result, and CPU/GPU comparison result.
+Windows Intel HD Graphics 4400 has recorded OpenGL, OpenCL, and DX11 PBKDF2 acceptance. Android Termux Adreno 618 has recorded OpenGL acceptance and limited Vulkan parity/small-search checks; Vulkan is about two candidates/s there, and sustained/large-batch behavior remains open. OpenCL is unavailable on that phone. Netcup Ubuntu exposes llvmpipe software rendering, not a physical GPU. Hosted macOS compile/test coverage passed, but Apple GPU runtime testing remains open. CUDA build/runtime and other-vendor GPU acceptance remain open. Record OS, driver, device, backend, batch size, self-test result, and CPU/GPU comparison for every new run.
 
-Windows secret output is assembled in a protected sibling temporary file and committed atomically without replacing an existing destination. A synthetic writer unit test now covers successful commit, refusing to overwrite an existing file, and temporary-file cleanup. It does not verify the current writer ACL on Windows, partial-write failures, reparse-point behavior, forced termination/recovery, or clean-machine package acceptance; these remain release gates along with dependency/security review and hosted CI execution.
+Windows secret output is assembled in a protected sibling temporary file and committed atomically without replacing an existing destination. A synthetic writer unit test now covers successful commit, refusing to overwrite an existing file, and temporary-file cleanup. It does not verify the current writer ACL on Windows, partial-write failures, reparse-point behavior, forced termination/recovery, or clean-machine package acceptance. These remain release gates. Hosted CI has passed for the committed revision; dependency/security review still has open findings, and the license inventory needs regeneration.
