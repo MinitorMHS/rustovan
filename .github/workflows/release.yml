@@ -7,6 +7,11 @@ on:
         description: "Release tag matching Cargo.toml (for example, v0.1.0)"
         required: true
         type: string
+      publish_release:
+        description: "Publish a GitHub release after all platform builds pass"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -25,6 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ inputs.tag_name }}
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
         run: |
           set -euo pipefail
           version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')"
@@ -33,7 +39,7 @@ jobs:
             echo "tag_name must be ${expected} to match Cargo.toml (got ${TAG_NAME})" >&2
             exit 1
           fi
-          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG_NAME}" >/dev/null 2>&1; then
+          if [[ "${PUBLISH_RELEASE}" == "true" ]] && gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG_NAME}" >/dev/null 2>&1; then
             echo "Git tag ${TAG_NAME} already exists; choose an unused version tag." >&2
             exit 1
           fi
@@ -109,9 +115,11 @@ jobs:
           toolchain="$ndk_root/toolchains/llvm/prebuilt/linux-x86_64/bin"
           echo "ANDROID_NDK_ROOT=$ndk_root" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$ndk_root" >> "$GITHUB_ENV"
-          echo "CC_aarch64_linux_android=$toolchain/aarch64-linux-android24-clang" >> "$GITHUB_ENV"
+          # renameat2 is available from Android API 30. Link against that API
+          # so the Android binary does not fail to link against the API 24 sysroot.
+          echo "CC_aarch64_linux_android=$toolchain/aarch64-linux-android30-clang" >> "$GITHUB_ENV"
           echo "AR_aarch64_linux_android=$toolchain/llvm-ar" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$toolchain/aarch64-linux-android24-clang" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$toolchain/aarch64-linux-android30-clang" >> "$GITHUB_ENV"
           echo "$toolchain" >> "$GITHUB_PATH"
 
       - name: Build Android ARM64 release with default backend features
@@ -128,8 +136,6 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/ton-vanity-rust.exe" dist/
-          Compress-Archive -Path dist/ton-vanity-rust.exe -DestinationPath "dist/ton-vanity-rust-${{ matrix.asset_id }}.zip"
-          Remove-Item dist/ton-vanity-rust.exe
 
       - name: Package Unix binary
         if: matrix.platform != 'windows'
@@ -151,6 +157,7 @@ jobs:
 
   publish:
     name: Publish GitHub release
+    if: ${{ inputs.publish_release }}
     needs: [validate, build]
     runs-on: ubuntu-latest
     permissions:
@@ -163,6 +170,22 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Package Windows release binary
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZIP_DEFLATED, ZipFile
+
+          binary = Path("dist/ton-vanity-rust.exe")
+          if not binary.is_file():
+              raise SystemExit(f"Windows build artifact is missing: {binary}")
+          archive = Path("dist/ton-vanity-rust-windows-x86_64.zip")
+          with ZipFile(archive, "w", compression=ZIP_DEFLATED) as package:
+              package.write(binary, arcname=binary.name)
+          binary.unlink()
+          PY
+
       - name: Generate checksums
         run: cd dist && sha256sum * > SHA256SUMS.txt
 
@@ -171,3 +194,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ inputs.tag_name }}
         run: gh release create "$TAG_NAME" dist/* --target "$GITHUB_SHA" --title "$TAG_NAME" --generate-notes
+
