@@ -2658,6 +2658,54 @@ fn safe_auto_hybrid_benchmark(request: AutoHybridBenchmark<'_>) -> Result<(u64, 
     .unwrap_or_else(|_| anyhow::bail!("hybrid/{backend} panicked during Auto calibration"))
 }
 #[cfg(feature = "gpu")]
+fn benchmark_auto_route_confirmation(cfg: &SearchConfig, route: AutoRoute) -> Result<f64> {
+    match route {
+        AutoRoute::Cpu => {
+            let pool = build_search_pool(cfg)?;
+            let (candidates, elapsed) = benchmark_cpu_for_window(cfg, &pool)?;
+            Ok(candidates as f64 / elapsed.as_secs_f64().max(0.000_001))
+        }
+        AutoRoute::Gpu(backend, batch_len) => {
+            let engine = AutoGpuEngine::new(cfg, backend)?;
+            let available = AutoGpuEngine::available_device_count(backend).unwrap_or(1);
+            let verified = verify_additional_gpu_devices(cfg, backend, batch_len, available)?;
+            let worker_count = 1 + verified.len();
+            drop(verified);
+
+            let pool = build_search_pool(cfg)?;
+            let (candidates, elapsed) =
+                safe_auto_gpu_benchmark(cfg, backend, &engine, &pool, batch_len)?;
+            Ok(candidates as f64 / elapsed.as_secs_f64().max(0.000_001) * worker_count as f64)
+        }
+        AutoRoute::Hybrid(backend, batch_len, schedule) => {
+            let engine = AutoGpuEngine::new(cfg, backend)?;
+            let available = AutoGpuEngine::available_device_count(backend).unwrap_or(1);
+            let verified = verify_additional_gpu_devices(cfg, backend, batch_len, available)?;
+            let worker_count = 1 + verified.len();
+            drop(verified);
+
+            let warmup_seeds = safe_hybrid_gpu_warmup(cfg, backend, &engine, batch_len)?;
+            let cpu_pool = build_search_pool_with_threads(schedule.cpu_workers)?;
+            let gpu_result_pool = build_search_pool_with_threads(schedule.gpu_result_workers)?;
+            let (cpu_candidates, gpu_candidates, elapsed) =
+                safe_auto_hybrid_benchmark(AutoHybridBenchmark {
+                    cfg,
+                    backend,
+                    engine: &engine,
+                    cpu_pool: &cpu_pool,
+                    gpu_result_pool: Some(&gpu_result_pool),
+                    schedule,
+                    gpu_batch_len: batch_len,
+                    warmup_seeds: &warmup_seeds,
+                })?;
+            let candidates =
+                cpu_candidates.saturating_add(gpu_candidates.saturating_mul(worker_count as u64));
+            Ok(candidates as f64 / elapsed.as_secs_f64().max(0.000_001))
+        }
+    }
+}
+
+#[cfg(feature = "gpu")]
 const AUTO_MAX_CPU_SHORT_SEARCH_SECONDS: f64 = 30.0;
 
 #[cfg(feature = "gpu")]
@@ -2979,11 +3027,61 @@ fn choose_auto_route(cfg: &SearchConfig) -> Result<AutoRoute> {
             }
         }
     }
+    let confirmation_started = Instant::now();
+    let (mut route, mut rate) =
+        select_auto_route((best_single_route, best_single_rate), best_hybrid);
+    if let Some((hybrid_route, initial_hybrid_rate)) = best_hybrid {
+        eprintln!(
+            "auto calibration confirmation: remeasuring the leading single route and leading hybrid route"
+        );
+        let confirmed_single_rate = match benchmark_auto_route_confirmation(cfg, best_single_route)
+        {
+            Ok(confirmed_rate) => {
+                eprintln!(
+                    "auto confirmation {:?}: initial={best_single_rate:.1}/s confirmed={confirmed_rate:.1}/s",
+                    best_single_route
+                );
+                (best_single_rate + confirmed_rate) / 2.0
+            }
+            Err(error) if calibration_error_is_cancellation(&error) => return Err(error),
+            Err(error) => {
+                eprintln!(
+                    "auto confirmation {:?} failed ({error:#}); keeping its initial measurement",
+                    best_single_route
+                );
+                best_single_rate
+            }
+        };
+        let confirmed_hybrid_rate = match benchmark_auto_route_confirmation(cfg, hybrid_route) {
+            Ok(confirmed_rate) => {
+                eprintln!(
+                    "auto confirmation {:?}: initial={initial_hybrid_rate:.1}/s confirmed={confirmed_rate:.1}/s",
+                    hybrid_route
+                );
+                (initial_hybrid_rate + confirmed_rate) / 2.0
+            }
+            Err(error) if calibration_error_is_cancellation(&error) => return Err(error),
+            Err(error) => {
+                eprintln!(
+                    "auto confirmation {:?} failed ({error:#}); keeping its initial measurement",
+                    hybrid_route
+                );
+                initial_hybrid_rate
+            }
+        };
+        (route, rate) = select_auto_route(
+            (best_single_route, confirmed_single_rate),
+            Some((hybrid_route, confirmed_hybrid_rate)),
+        );
+    }
+    eprintln!(
+        "auto_confirmation_elapsed={:.2}s",
+        confirmation_started.elapsed().as_secs_f64()
+    );
     eprintln!(
         "auto_calibration_elapsed={:.2}s",
         calibration_started.elapsed().as_secs_f64()
     );
-    let (route, rate) = select_auto_route((best_single_route, best_single_rate), best_hybrid);
     let route_note = match route {
         AutoRoute::Cpu => "CPU route selected",
         AutoRoute::Gpu(_, _) => "GPU-assisted single route selected",
