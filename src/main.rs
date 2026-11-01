@@ -1,6 +1,15 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use rand::TryRngCore;
+use rustovan::{
+    gpu::{GpuBackend, capability_report, devices, search_backend_name},
+    matcher::{MatchMode, Matcher, normalize_friendly_prefixes},
+    search::{
+        FoundWallet, SearchConfig, SearchProgress, expected_search_candidates,
+        format_duration_dhms, search_auto, search_cpu, search_gpu, search_hybrid,
+    },
+    wallet::{Network, WalletVersion},
+};
 use std::{
     collections::VecDeque,
     env,
@@ -14,15 +23,6 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
-};
-use ton_vanity_rust::{
-    gpu::{GpuBackend, capability_report, devices, search_backend_name},
-    matcher::{MatchMode, Matcher, normalize_friendly_prefixes},
-    search::{
-        FoundWallet, SearchConfig, SearchProgress, expected_search_candidates,
-        format_duration_dhms, search_auto, search_cpu, search_gpu, search_hybrid,
-    },
-    wallet::{Network, WalletVersion},
 };
 use zeroize::Zeroizing;
 
@@ -1179,7 +1179,7 @@ fn run_daemon_command(action: DaemonAction, cli: &Cli) -> Result<()> {
             } else {
                 Network::Mainnet
             };
-            let header = ton_vanity_rust::address::friendly_address(
+            let header = rustovan::address::friendly_address(
                 0,
                 [0; 32],
                 cli.bounceable,
@@ -1435,14 +1435,14 @@ fn main() -> Result<()> {
                     cancellation: Arc::new(AtomicBool::new(false)),
                 };
                 cfg.validate()?;
-                return ton_vanity_rust::search::benchmark_gpu_backends(&cfg, only_backend);
+                return rustovan::search::benchmark_gpu_backends(&cfg, only_backend);
             }
             Command::Daemon { action } => return run_daemon_command(action, &c),
             Command::GpuSelfTest { backend } => {
                 let _requested = backend.parse::<GpuBackend>().map_err(anyhow::Error::msg)?;
                 #[cfg(all(feature = "d3d11", target_os = "windows"))]
                 if _requested == GpuBackend::Dx11 {
-                    let engine = ton_vanity_rust::gpu::d3d11::D3d11SeedEngine::new(64)?;
+                    let engine = rustovan::gpu::d3d11::D3d11SeedEngine::new(64)?;
                     engine.acceptance_test()?;
                     println!("Direct3D 11 PBKDF2 parity: PASS ({})", engine.device_name());
                     return Ok(());
@@ -1455,7 +1455,7 @@ fn main() -> Result<()> {
                 }
                 #[cfg(feature = "opencl")]
                 if _requested == GpuBackend::OpenCl {
-                    let engine = ton_vanity_rust::gpu::opencl::OpenClSeedEngine::new(64)?;
+                    let engine = rustovan::gpu::opencl::OpenClSeedEngine::new(64)?;
                     engine.acceptance_test()?;
                     println!("OpenCL PBKDF2 parity: PASS ({})", engine.name());
                     return Ok(());
@@ -1466,18 +1466,17 @@ fn main() -> Result<()> {
                 }
                 #[cfg(feature = "cuda")]
                 if _requested == GpuBackend::Cuda {
-                    ton_vanity_rust::gpu::cuda_self_test()?;
+                    rustovan::gpu::cuda_self_test()?;
                     println!("CUDA PBKDF2 self-test: PASS");
                     return Ok(());
                 }
                 #[cfg(feature = "gpu")]
                 {
-                    let engine = ton_vanity_rust::gpu::GpuSeedEngine::new(
-                        &ton_vanity_rust::gpu::GpuSeedEngineConfig {
+                    let engine =
+                        rustovan::gpu::GpuSeedEngine::new(&rustovan::gpu::GpuSeedEngineConfig {
                             backend: _requested,
                             batch_size: 64,
-                        },
-                    )?;
+                        })?;
                     engine.acceptance_test()?;
                     println!("GPU PBKDF2 self-test: PASS ({:?})", engine.backend());
                     return Ok(());
@@ -1506,12 +1505,8 @@ fn main() -> Result<()> {
     } else {
         Network::Mainnet
     };
-    let header = ton_vanity_rust::address::friendly_address(
-        0,
-        [0; 32],
-        c.bounceable,
-        network == Network::Testnet,
-    );
+    let header =
+        rustovan::address::friendly_address(0, [0; 32], c.bounceable, network == Network::Testnet);
     let matcher = Matcher {
         prefix: normalize_friendly_prefixes(c.prefix, &header[..2]),
         suffix: c.suffix,

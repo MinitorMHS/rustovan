@@ -281,7 +281,7 @@
 "ton","0.4.8","MIT OR Apache-2.0","registry+https://github.com/rust-lang/crates.io-index","https://github.com/ston-fi/ton-rs",
 "ton_core","0.3.7","MIT OR Apache-2.0","registry+https://github.com/rust-lang/crates.io-index","https://github.com/ston-fi/ton-rs",
 "ton_macros","0.2.3","MIT OR Apache-2.0","registry+https://github.com/rust-lang/crates.io-index","https://github.com/ston-fi/ton-rs",
-"ton-vanity-rust","0.1.0","MIT",,,
+"rustovan","0.1.0","MIT",,,
 "tower","0.5.3","MIT","registry+https://github.com/rust-lang/crates.io-index","https://github.com/tower-rs/tower",
 "tower-http","0.6.11","MIT","registry+https://github.com/rust-lang/crates.io-index","https://github.com/tower-rs/tower-http",
 "tower-layer","0.3.3","MIT","registry+https://github.com/rust-lang/crates.io-index","https://github.com/tower-rs/tower",

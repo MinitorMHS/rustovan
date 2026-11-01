@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/ton-vanity-hero.svg" alt="TON Vanity Rust project banner" width="100%">
+<img src="assets/rustovan-hero.svg" alt="Rustovan project banner" width="100%">
 
 [![Rust](https://img.shields.io/badge/Rust-stable-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20Termux-2563eb)](#installation)
@@ -17,7 +17,7 @@ CPU-first wallet derivation with optional GPU-assisted PBKDF2 acceleration.
 
 ## Overview
 
-TON Vanity Rust is a command-line wallet generator that searches newly created 12-word English BIP39 mnemonics for TON addresses matching a prefix, suffix, or exact address. It supports CPU search and GPU-assisted PBKDF2; wallet derivation, TON address construction, and matching remain on the CPU.
+Rustovan is a command-line wallet generator that searches newly created 12-word English BIP39 mnemonics for TON addresses matching a prefix, suffix, or exact address. It supports CPU search and GPU-assisted PBKDF2; wallet derivation, TON address construction, and matching remain on the CPU.
 
 ## Contents
 
@@ -53,7 +53,7 @@ TON Vanity Rust is a command-line wallet generator that searches newly created 1
 ## How it works
 
 <div align="center">
-<img src="assets/search-pipeline.svg" alt="TON Vanity Rust search pipeline. GPU acceleration is limited to PBKDF2; wallet derivation and address matching run on the CPU." width="100%">
+<img src="assets/search-pipeline.svg" alt="Rustovan search pipeline. GPU acceleration is limited to PBKDF2; wallet derivation and address matching run on the CPU." width="100%">
 </div>
 
 The CPU is the correctness reference. GPU backends accelerate **PBKDF2 only**; key derivation, public-key generation, wallet construction, address encoding, and matching run on the CPU. A GPU-found match is re-derived on the CPU before its wallet is returned.
@@ -349,7 +349,7 @@ Run [Build and release binaries](.github/workflows/release.yml) manually from Gi
 
 The workflow builds `rustovan.exe` packages for Windows x86_64 and ARM64, and `rustovan` packages for Linux glibc amd64, ARM64, hard-float ARMv7, and RV64GC; Linux musl amd64 and ARM64; macOS Intel and Apple Silicon; and Android/Termux ARM64, then publishes SHA-256 checksums. Installer scripts remain in the repository and are not copied into build artifacts or releases. The musl packages are separate from the glibc Linux packages. Linux cross-target builds use the `cross-openssl` feature to build OpenSSL for their target; Android uses `android-cross` and targets Android API 30 or newer. Other targets use Cargo's default backend features. Which backends can run still depends on the target OS, GPU, and runtime libraries. Use `publish_release: false` to build and upload platform artifacts without creating a GitHub release. Android GPU runtime behavior still needs device testing. GitHub Actions must be allowed to create releases with `contents: write` when publishing.
 
-The published v0.1.0 release predates the expanded build matrix and the `rustovan` executable name. Its current packages use the older `ton-vanity-rust` name and cover Windows x86_64, Linux x86_64 and ARM64, macOS x86_64 and ARM64, and Android ARM64. The installer recognizes these legacy archive names and installs the executable as `rustovan`; a later release is needed for newly named binaries and the remaining targets.
+The published v0.1.0 release predates the expanded build matrix and the `rustovan` executable name. Its archives use the older `ton-vanity-rust` name and cover Windows x86_64, Linux x86_64 and ARM64, macOS x86_64 and ARM64, and Android ARM64. The installer recognizes those legacy archive names and installs the executable as `rustovan`; a new release is needed to publish the expanded target matrix under the renamed project.
 
 ## Development and validation
 
@@ -380,6 +380,6 @@ The CI workflow also checks the CPU-only build, compiles the default configurati
 
 <div align="center">
 
-**TON Vanity Rust** · Search locally. Validate carefully. Protect your secrets.
+**Rustovan** · Search locally. Validate carefully. Protect your secrets.
 
 </div>

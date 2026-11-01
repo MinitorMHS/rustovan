@@ -121,9 +121,9 @@ jobs:
           [IO.File]::WriteAllText('Cargo.toml', $manifest, [Text.UTF8Encoding]::new($false))
 
           $lock = [IO.File]::ReadAllText('Cargo.lock')
-          $lockPattern = '(?m)(^name = "ton-vanity-rust"\r?\nversion = ")[^"\r\n]+(")(\r?)$'
+          $lockPattern = '(?m)(^name = "rustovan"\r?\nversion = ")[^"\r\n]+(")(\r?)$'
           $lockRegex = [regex]::new($lockPattern)
-          if ($lockRegex.Matches($lock).Count -ne 1) { throw 'Expected exactly one ton-vanity-rust package entry in Cargo.lock.' }
+          if ($lockRegex.Matches($lock).Count -ne 1) { throw 'Expected exactly one rustovan package entry in Cargo.lock.' }
           $lock = $lockRegex.Replace($lock, ('${1}' + $version + '${2}${3}'), 1)
           [IO.File]::WriteAllText('Cargo.lock', $lock, [Text.UTF8Encoding]::new($false))
 
@@ -155,7 +155,7 @@ jobs:
                   destination.write(updated)
 
           update("Cargo.toml", r'(?m)^(version = ")[^"\r\n]+(")(\r?)$')
-          update("Cargo.lock", r'(?m)(^name = "ton-vanity-rust"\r?\nversion = ")[^"\r\n]+(")(\r?)$')
+          update("Cargo.lock", r'(?m)(^name = "rustovan"\r?\nversion = ")[^"\r\n]+(")(\r?)$')
           PY
 
       - name: Install stable Rust and target
