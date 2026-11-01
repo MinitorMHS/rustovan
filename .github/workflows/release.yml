@@ -159,10 +159,7 @@ jobs:
           PY
 
       - name: Install stable Rust and target
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
-        with:
-          toolchain: stable
-          targets: ${{ matrix.target }}
+        run: rustup toolchain install stable --profile minimal --target "${{ matrix.target }}"
 
       - name: Install Linux TLS build dependencies
         if: matrix.platform == 'linux'
@@ -235,15 +232,15 @@ jobs:
 
       - name: Build Android ARM64 release with default backend features
         if: matrix.platform == 'android'
-        run: cargo build --release --locked --target "${{ matrix.target }}" --features android-cross
+        run: cargo +stable build --release --locked --target "${{ matrix.target }}" --features android-cross
 
       - name: Build Linux cross-target release with vendored OpenSSL
         if: matrix.cross_openssl == true
-        run: cargo build --release --locked --target "${{ matrix.target }}" --features cross-openssl
+        run: cargo +stable build --release --locked --target "${{ matrix.target }}" --features cross-openssl
 
       - name: Build release binary
         if: matrix.platform != 'android' && matrix.cross_openssl != true
-        run: cargo build --release --locked --target "${{ matrix.target }}"
+        run: cargo +stable build --release --locked --target "${{ matrix.target }}"
 
       - name: Package Windows binary
         if: matrix.platform == 'windows'
