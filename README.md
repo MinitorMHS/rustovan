@@ -1,17 +1,22 @@
-::: {align="center"}
-`<img src="assets/rustovan-hero.svg" alt="Rustovan project banner" width="100%">`{=html}
+<div align="center">
+<img src="assets/rustovan-hero.svg" alt="Rustovan project banner" width="100%">
 
 [![Rust](https://img.shields.io/badge/Rust-stable-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20Termux-2563eb)](#installation)
 [![Status](https://img.shields.io/badge/status-under%20development-orange)](STATUS.md)
+[![Latest Release](https://img.shields.io/github/v/release/MinitorMHS/rustovan)](https://github.com/MinitorMHS/rustovan/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/MinitorMHS/rustovan/rust.yml?label=CI)](https://github.com/MinitorMHS/rustovan/actions/workflows/rust.yml)
+[![Downloads](https://img.shields.io/github/downloads/MinitorMHS/rustovan/total)](https://github.com/MinitorMHS/rustovan/releases)
+[![Contributors](https://img.shields.io/github/contributors/MinitorMHS/rustovan)](https://github.com/MinitorMHS/rustovan/graphs/contributors)
+[![Last Commit](https://img.shields.io/github/last-commit/MinitorMHS/rustovan)](https://github.com/MinitorMHS/rustovan/commits/main)
 
 **Search newly generated TON wallets for a matching address.**
 
 CPU-first wallet derivation with optional GPU-assisted PBKDF2
 acceleration.
-:::
+</div>
 
-> \[!WARNING\] **Under development --- not production-certified.**
+> [!WARNING] **Under development --- not production-certified.**
 > Review the [current readiness status](STATUS.md), [validation
 > requirements](docs/validation.md), and [security policy](SECURITY.md)
 > before relying on this project with funds. This README does not
@@ -75,9 +80,9 @@ on the CPU.
 
 ## How it works
 
-::: {align="center"}
+<div align="center">
 `<img src="assets/search-pipeline.svg" alt="Rustovan search pipeline. GPU acceleration is limited to PBKDF2; wallet derivation and address matching run on the CPU." width="100%">`{=html}
-:::
+</div>
 
 The CPU is the correctness reference. GPU backends accelerate **PBKDF2
 only**. Key derivation, public-key generation, wallet construction,
@@ -199,7 +204,7 @@ private key. To save wallet credentials, specify a new output file:
 rustovan --backend auto --wallet v5r1 --suffix yyy --output ./wallet-secrets.txt
 ```
 
-> \[!CAUTION\] `--output` writes **plaintext wallet credentials**. Use a
+> [!CAUTION] `--output` writes **plaintext wallet credentials**. Use a
 > trusted machine and protect the file. Existing files are never
 > overwritten.
 >
@@ -603,6 +608,6 @@ production-readiness gaps.
 
 ------------------------------------------------------------------------
 
-::: {align="center"}
+<div align="center">
 **Rustovan** · Search locally. Validate carefully. Protect your secrets.
-:::
+</div>
