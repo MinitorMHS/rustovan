@@ -229,7 +229,7 @@ After a release has been published, download the binary package for your operati
 
 Run [Build and release binaries](.github/workflows/release.yml) manually from GitHub Actions. The required `tag_name` must match the version in `Cargo.toml`—for example, version `0.1.0` requires `v0.1.0`—and must not already exist.
 
-The workflow is configured to build Windows x64, Linux x64 and ARM64, macOS Intel and Apple Silicon, and Android/Termux ARM64 packages, then publish SHA-256 checksums. Every target uses Cargo's default backend features; the Android cross-build additionally enables `android-cross` to bundle OpenSSL and targets Android API 30 or newer. Which backends can run still depends on the target OS, GPU, and runtime libraries. Use `publish_release: false` to build and upload platform artifacts without creating a GitHub release. Android GPU runtime behavior still needs device testing. GitHub Actions must be allowed to create releases with `contents: write` when publishing.
+The workflow is configured to build Windows x64 and ARM64, Linux x64 and ARM64, macOS Intel and Apple Silicon, and Android/Termux ARM64 packages, then publish SHA-256 checksums. Every target uses Cargo's default backend features; the Android cross-build additionally enables `android-cross` to bundle OpenSSL and targets Android API 30 or newer. Which backends can run still depends on the target OS, GPU, and runtime libraries. Use `publish_release: false` to build and upload platform artifacts without creating a GitHub release. Android GPU runtime behavior still needs device testing. GitHub Actions must be allowed to create releases with `contents: write` when publishing.
 
 ## Development and validation
 
