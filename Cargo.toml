@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 description = "TON vanity wallet generator with BIP39 multichain derivation and pluggable CPU/GPU backends"
+autobins = false
+
+[[bin]]
+name = "rustovan"
+path = "src/main.rs"
+
 
 [features]
 default = ["cpu", "gpu", "opencl", "vulkan", "d3d11"]

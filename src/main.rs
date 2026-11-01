@@ -27,7 +27,7 @@ use ton_vanity_rust::{
 use zeroize::Zeroizing;
 
 #[derive(Parser, Clone)]
-#[command(name = "ton-vanity", version, about = "TON vanity wallet generator")]
+#[command(name = "rustovan", version, about = "TON vanity wallet generator")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,

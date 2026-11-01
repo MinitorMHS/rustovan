@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Release tag matching Cargo.toml (for example, v0.1.0)"
+        description: "Release version tag to stamp into the binaries (for example, v1.0.0)"
         required: true
         type: string
       publish_release:
@@ -26,17 +26,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check tag against crate version and ensure it is unused
+      - name: Validate version tag and ensure it is unused
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ inputs.tag_name }}
           PUBLISH_RELEASE: ${{ inputs.publish_release }}
         run: |
           set -euo pipefail
-          version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')"
-          expected="v${version}"
-          if [[ "${TAG_NAME}" != "${expected}" ]]; then
-            echo "tag_name must be ${expected} to match Cargo.toml (got ${TAG_NAME})" >&2
+          tag_pattern='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          if [[ ! "${TAG_NAME}" =~ $tag_pattern ]]; then
+            echo "tag_name must be a stable semantic version such as v1.0.0 (got ${TAG_NAME})" >&2
             exit 1
           fi
           if [[ "${PUBLISH_RELEASE}" == "true" ]] && gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG_NAME}" >/dev/null 2>&1; then
@@ -106,6 +105,58 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Set Cargo package version from release tag (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          $version = $env:TAG_NAME.Substring(1)
+          $manifest = [IO.File]::ReadAllText('Cargo.toml')
+          $manifestPattern = '(?m)^(version = ")[^"\r\n]+(")(\r?)$'
+          $manifestRegex = [regex]::new($manifestPattern)
+          if ($manifestRegex.Matches($manifest).Count -ne 1) { throw 'Expected exactly one package version in Cargo.toml.' }
+          $manifest = $manifestRegex.Replace($manifest, ('${1}' + $version + '${2}${3}'), 1)
+          [IO.File]::WriteAllText('Cargo.toml', $manifest, [Text.UTF8Encoding]::new($false))
+
+          $lock = [IO.File]::ReadAllText('Cargo.lock')
+          $lockPattern = '(?m)(^name = "ton-vanity-rust"\r?\nversion = ")[^"\r\n]+(")(\r?)$'
+          $lockRegex = [regex]::new($lockPattern)
+          if ($lockRegex.Matches($lock).Count -ne 1) { throw 'Expected exactly one ton-vanity-rust package entry in Cargo.lock.' }
+          $lock = $lockRegex.Replace($lock, ('${1}' + $version + '${2}${3}'), 1)
+          [IO.File]::WriteAllText('Cargo.lock', $lock, [Text.UTF8Encoding]::new($false))
+
+      - name: Set Cargo package version from release tag (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          version="${TAG_NAME#v}"
+          python3 - "$version" <<'PY'
+          import re
+          import sys
+
+          version = sys.argv[1]
+
+          def update(path, pattern):
+              with open(path, encoding="utf-8", newline="") as source:
+                  text = source.read()
+              updated, count = re.subn(
+                  pattern,
+                  lambda match: match.group(1) + version + match.group(2) + match.group(3),
+                  text,
+                  count=1,
+              )
+              if count != 1:
+                  raise SystemExit(f"Expected one version field to update in {path}; found {count}")
+              with open(path, "w", encoding="utf-8", newline="") as destination:
+                  destination.write(updated)
+
+          update("Cargo.toml", r'(?m)^(version = ")[^"\r\n]+(")(\r?)$')
+          update("Cargo.lock", r'(?m)(^name = "ton-vanity-rust"\r?\nversion = ")[^"\r\n]+(")(\r?)$')
+          PY
 
       - name: Install stable Rust and target
         uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
@@ -199,17 +250,17 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/ton-vanity-rust.exe" "dist/ton-vanity-rust-${{ matrix.asset_id }}.exe"
+          Copy-Item "target/${{ matrix.target }}/release/rustovan.exe" "dist/rustovan-${{ matrix.asset_id }}.exe"
 
       - name: Package Unix binary
         if: matrix.platform != 'windows'
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp "target/${{ matrix.target }}/release/ton-vanity-rust" dist/ton-vanity-rust
-          chmod 755 dist/ton-vanity-rust
-          tar -C dist -czf "dist/ton-vanity-rust-${{ matrix.asset_id }}.tar.gz" ton-vanity-rust
-          rm dist/ton-vanity-rust
+          cp "target/${{ matrix.target }}/release/rustovan" dist/rustovan
+          chmod 755 dist/rustovan
+          tar -C dist -czf "dist/rustovan-${{ matrix.asset_id }}.tar.gz" rustovan
+          rm dist/rustovan
 
       - name: Upload packaged binary
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -247,14 +298,14 @@ jobs:
           from pathlib import Path
           from zipfile import ZIP_DEFLATED, ZipFile
 
-          binaries = sorted(Path("dist").glob("ton-vanity-rust-windows-*.exe"))
+          binaries = sorted(Path("dist").glob("rustovan-windows-*.exe"))
           if not binaries:
               raise SystemExit("No Windows build executables were downloaded")
           for binary in binaries:
-              asset_id = binary.stem.removeprefix("ton-vanity-rust-")
-              archive = Path("dist") / f"ton-vanity-rust-{asset_id}.zip"
+              asset_id = binary.stem.removeprefix("rustovan-")
+              archive = Path("dist") / f"rustovan-{asset_id}.zip"
               with ZipFile(archive, "w", compression=ZIP_DEFLATED) as package:
-                  package.write(binary, arcname="ton-vanity-rust.exe")
+                  package.write(binary, arcname="rustovan.exe")
               binary.unlink()
           PY
 
@@ -266,4 +317,3 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ inputs.tag_name }}
         run: gh release create "$TAG_NAME" dist/* --target "$GITHUB_SHA" --title "$TAG_NAME" --generate-notes
-

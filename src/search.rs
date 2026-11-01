@@ -2657,6 +2657,55 @@ fn safe_auto_hybrid_benchmark(request: AutoHybridBenchmark<'_>) -> Result<(u64, 
     }))
     .unwrap_or_else(|_| anyhow::bail!("hybrid/{backend} panicked during Auto calibration"))
 }
+
+#[cfg(feature = "gpu")]
+fn benchmark_auto_route_confirmation(cfg: &SearchConfig, route: AutoRoute) -> Result<f64> {
+    match route {
+        AutoRoute::Cpu => {
+            let pool = build_search_pool(cfg)?;
+            let (candidates, elapsed) = benchmark_cpu_for_window(cfg, &pool)?;
+            Ok(candidates as f64 / elapsed.as_secs_f64().max(0.000_001))
+        }
+        AutoRoute::Gpu(backend, batch_len) => {
+            let engine = AutoGpuEngine::new(cfg, backend)?;
+            let available = AutoGpuEngine::available_device_count(backend).unwrap_or(1);
+            let verified = verify_additional_gpu_devices(cfg, backend, batch_len, available)?;
+            let worker_count = 1 + verified.len();
+            drop(verified);
+
+            let pool = build_search_pool(cfg)?;
+            let (candidates, elapsed) =
+                safe_auto_gpu_benchmark(cfg, backend, &engine, &pool, batch_len)?;
+            Ok(candidates as f64 / elapsed.as_secs_f64().max(0.000_001) * worker_count as f64)
+        }
+        AutoRoute::Hybrid(backend, batch_len, schedule) => {
+            let engine = AutoGpuEngine::new(cfg, backend)?;
+            let available = AutoGpuEngine::available_device_count(backend).unwrap_or(1);
+            let verified = verify_additional_gpu_devices(cfg, backend, batch_len, available)?;
+            let worker_count = 1 + verified.len();
+            drop(verified);
+
+            let warmup_seeds = safe_hybrid_gpu_warmup(cfg, backend, &engine, batch_len)?;
+            let cpu_pool = build_search_pool_with_threads(schedule.cpu_workers)?;
+            let gpu_result_pool = build_search_pool_with_threads(schedule.gpu_result_workers)?;
+            let (cpu_candidates, gpu_candidates, elapsed) =
+                safe_auto_hybrid_benchmark(AutoHybridBenchmark {
+                    cfg,
+                    backend,
+                    engine: &engine,
+                    cpu_pool: &cpu_pool,
+                    gpu_result_pool: Some(&gpu_result_pool),
+                    schedule,
+                    gpu_batch_len: batch_len,
+                    warmup_seeds: &warmup_seeds,
+                })?;
+            let candidates =
+                cpu_candidates.saturating_add(gpu_candidates.saturating_mul(worker_count as u64));
+            Ok(candidates as f64 / elapsed.as_secs_f64().max(0.000_001))
+        }
+    }
+}
+
 #[cfg(feature = "gpu")]
 fn benchmark_auto_route_confirmation(cfg: &SearchConfig, route: AutoRoute) -> Result<f64> {
     match route {
