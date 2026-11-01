@@ -49,6 +49,25 @@ jobs:
       - name: Build release executable
         run: cargo build --release --locked
 
+  windows-arm64:
+    name: Windows ARM64 release build
+    runs-on: windows-11-arm
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust and ARM64 target
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
+        with:
+          toolchain: stable
+          targets: aarch64-pc-windows-msvc
+
+      - name: Build Windows ARM64 release executable
+        run: cargo build --release --locked --target aarch64-pc-windows-msvc
+
   linux:
     name: Linux build and tests
     runs-on: ubuntu-24.04
@@ -155,3 +174,4 @@ jobs:
 
       - name: Build release executable with Metal support
         run: cargo build --release --locked
+
