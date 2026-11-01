@@ -16,7 +16,9 @@ cuda = []
 sealed-output = ["dep:age"]
 sealed-output-gpu = ["sealed-output", "cpu", "gpu", "opencl", "vulkan", "d3d11"]
 # Android cross-builds bundle OpenSSL because the Android NDK does not provide libssl.
-android-cross = ["cpu", "dep:openssl"]
+android-cross = ["cpu", "cross-openssl"]
+# Cross-Linux CI targets build OpenSSL for the target instead of probing host libraries.
+cross-openssl = ["dep:openssl"]
 
 [dependencies]
 anyhow = "1"
@@ -43,6 +45,7 @@ pollster = { version = "0.4", optional = true }
 bytemuck = { version = "1.24", features = ["derive"], optional = true }
 libloading = { version = "0.8.9", optional = true }
 naga = { version = "30.0.1", default-features = false, features = ["wgsl-in", "hlsl-out"], optional = true }
+openssl = { version = "0.10", features = ["vendored"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Console"] }
@@ -50,8 +53,7 @@ windows = { version = "0.62.2", optional = true, features = ["Win32_Foundation",
 # Enable sha2 runtime-dispatched ARMv8 SHA-512 on Linux/Android; software fallback remains available.
 [target.'cfg(all(target_arch = "aarch64", any(target_os = "linux", target_os = "android")))'.dependencies]
 sha2 = { version = "0.10", features = ["asm-aarch64"] }
-[target.'cfg(target_os = "android")'.dependencies]
-openssl = { version = "0.10", features = ["vendored"], optional = true }
 [dev-dependencies]
 hex = "0.4"
+
 
