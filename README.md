@@ -96,7 +96,7 @@ cargo build --release --locked --no-default-features --features cpu
 
 ### Termux / Android
 
-Termux is not limited to CPU mode. A native default-feature build includes the same GPU backend features as other default builds; whether a backend can run depends on the phone's GPU driver and runtime. This project has been exercised with Vulkan and OpenGL on Termux. The GitHub Actions Android ARM64 artifact uses the default Cargo feature set as well, plus `android-cross` for its Android OpenSSL build. The workflow cannot verify GPU runtime behavior on a phone.
+Termux is not limited to CPU mode. A native default-feature build includes the same GPU backend features as other default builds; whether a backend can run depends on the phone's GPU driver and runtime. This project has been exercised with Vulkan and OpenGL on Termux. The GitHub Actions Android ARM64 artifact uses the default Cargo feature set as well, plus `android-cross` for its Android OpenSSL build. That release binary targets Android API 30 (Android 11) because the Android linker needs `renameat2`; it will not run on older Android releases. The workflow cannot verify GPU runtime behavior on a phone.
 
 Install native dependencies first:
 
@@ -229,7 +229,7 @@ After a release has been published, download the binary package for your operati
 
 Run [Build and release binaries](.github/workflows/release.yml) manually from GitHub Actions. The required `tag_name` must match the version in `Cargo.toml`—for example, version `0.1.0` requires `v0.1.0`—and must not already exist.
 
-The workflow is configured to build Windows x64, Linux x64 and ARM64, macOS Intel and Apple Silicon, and Android/Termux ARM64 packages, then publish SHA-256 checksums. Every target uses Cargo's default backend features; the Android cross-build additionally enables `android-cross` to bundle OpenSSL. Which backends can run still depends on the target OS, GPU, and runtime libraries. The workflow has not yet been run on GitHub, and Android GPU runtime behavior still needs device testing. GitHub Actions must be allowed to create releases with `contents: write`.
+The workflow is configured to build Windows x64, Linux x64 and ARM64, macOS Intel and Apple Silicon, and Android/Termux ARM64 packages, then publish SHA-256 checksums. Every target uses Cargo's default backend features; the Android cross-build additionally enables `android-cross` to bundle OpenSSL and targets Android API 30 or newer. Which backends can run still depends on the target OS, GPU, and runtime libraries. Use `publish_release: false` to build and upload platform artifacts without creating a GitHub release. Android GPU runtime behavior still needs device testing. GitHub Actions must be allowed to create releases with `contents: write` when publishing.
 
 ## Development and validation
 
@@ -258,3 +258,4 @@ The CI workflow also checks the CPU-only build, compiles the default configurati
 **TON Vanity Rust** · Search locally. Validate carefully. Protect your secrets.
 
 </div>
+
