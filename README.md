@@ -81,7 +81,7 @@ on the CPU.
 ## How it works
 
 <div align="center">
-`<img src="assets/search-pipeline.svg" alt="Rustovan search pipeline. GPU acceleration is limited to PBKDF2; wallet derivation and address matching run on the CPU." width="100%">`{=html}
+<img src="assets/search-pipeline.svg" alt="Rustovan search pipeline. GPU acceleration is limited to PBKDF2; wallet derivation and address matching run on the CPU." width="100%">
 </div>
 
 The CPU is the correctness reference. GPU backends accelerate **PBKDF2
