@@ -2,7 +2,7 @@
 name = "rustovan"
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
+license = "GPL-3.0-only"
 description = "TON vanity wallet generator with BIP39 multichain derivation and pluggable CPU/GPU backends"
 autobins = false
 
