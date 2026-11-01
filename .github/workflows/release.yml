@@ -55,6 +55,10 @@ jobs:
             target: x86_64-pc-windows-msvc
             platform: windows
             asset_id: windows-x86_64
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            platform: windows
+            asset_id: windows-aarch64
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             platform: linux
@@ -135,7 +139,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/ton-vanity-rust.exe" dist/
+          Copy-Item "target/${{ matrix.target }}/release/ton-vanity-rust.exe" "dist/ton-vanity-rust-${{ matrix.asset_id }}.exe"
 
       - name: Package Unix binary
         if: matrix.platform != 'windows'
@@ -183,13 +187,15 @@ jobs:
           from pathlib import Path
           from zipfile import ZIP_DEFLATED, ZipFile
 
-          binary = Path("dist/ton-vanity-rust.exe")
-          if not binary.is_file():
-              raise SystemExit(f"Windows build artifact is missing: {binary}")
-          archive = Path("dist/ton-vanity-rust-windows-x86_64.zip")
-          with ZipFile(archive, "w", compression=ZIP_DEFLATED) as package:
-              package.write(binary, arcname=binary.name)
-          binary.unlink()
+          binaries = sorted(Path("dist").glob("ton-vanity-rust-windows-*.exe"))
+          if not binaries:
+              raise SystemExit("No Windows build executables were downloaded")
+          for binary in binaries:
+              asset_id = binary.stem.removeprefix("ton-vanity-rust-")
+              archive = Path("dist") / f"ton-vanity-rust-{asset_id}.zip"
+              with ZipFile(archive, "w", compression=ZIP_DEFLATED) as package:
+                  package.write(binary, arcname="ton-vanity-rust.exe")
+              binary.unlink()
           PY
 
       - name: Generate checksums
