@@ -690,7 +690,7 @@ fn spawn_progress_reporter(
                 },
             );
             let elapsed = format_elapsed(elapsed);
-            let line = format_live_status(
+            let line = format_live_status(LiveStatus {
                 checked,
                 recent_rate,
                 average_rate,
@@ -698,11 +698,11 @@ fn spawn_progress_reporter(
                 cpu_rate,
                 gpu_candidates,
                 gpu_rate,
-                &elapsed,
-                &eta,
-                &gpu_status,
-                terminal_columns().saturating_sub(1).max(1),
-            );
+                elapsed: &elapsed,
+                eta: &eta,
+                gpu_status: &gpu_status,
+                max_width: terminal_columns().saturating_sub(1).max(1),
+            });
             render_live_status(&line, &mut last_line_width);
         }
         last_line_width
@@ -730,7 +730,7 @@ fn compact_duration(value: &str) -> &str {
     value.split_once('.').map_or(value, |(whole, _)| whole)
 }
 
-fn format_live_status(
+struct LiveStatus<'a> {
     checked: u64,
     recent_rate: f64,
     average_rate: f64,
@@ -738,11 +738,26 @@ fn format_live_status(
     cpu_rate: f64,
     gpu_candidates: u64,
     gpu_rate: f64,
-    elapsed: &str,
-    eta: &str,
-    gpu_status: &str,
+    elapsed: &'a str,
+    eta: &'a str,
+    gpu_status: &'a str,
     max_width: usize,
-) -> String {
+}
+
+fn format_live_status(status: LiveStatus<'_>) -> String {
+    let LiveStatus {
+        checked,
+        recent_rate,
+        average_rate,
+        cpu_candidates,
+        cpu_rate,
+        gpu_candidates,
+        gpu_rate,
+        elapsed,
+        eta,
+        gpu_status,
+        max_width,
+    } = status;
     let full = format!(
         "{checked} checked | {recent_rate:.0}/s (avg {average_rate:.0}) | CPU {cpu_candidates} ({cpu_rate:.0}/s) + GPU {gpu_candidates} ({gpu_rate:.0}/s) | {elapsed} | ETA {eta} | GPU {gpu_status}"
     );
@@ -1240,12 +1255,10 @@ fn run_daemon_command(action: DaemonAction, cli: &Cli) -> Result<()> {
             let mut args = env::args_os().skip(1).collect::<Vec<_>>();
             let command_index = args
                 .windows(2)
-                .position(|pair| {
-                    pair[0] == OsString::from("daemon") && pair[1] == OsString::from("start")
-                })
+                .position(|pair| pair[0] == "daemon" && pair[1] == "start")
                 .context("could not locate daemon start command in process arguments")?;
             args.drain(command_index..command_index + 2);
-            args.retain(|argument| *argument != OsString::from("--prompt-passphrase"));
+            args.retain(|argument| argument != "--prompt-passphrase");
             remove_output_arguments(&mut args);
             if let Some(path) = output_path.as_deref() {
                 args.push(OsString::from("--output"));
@@ -1922,38 +1935,38 @@ mod runtime_output_tests {
 
     #[test]
     fn live_status_fits_one_terminal_row_and_keeps_lane_rates_and_eta() {
-        let line = format_live_status(
-            25_983,
-            1_017.0,
-            912.11,
-            12_889,
-            477.0,
-            12_800,
-            536.0,
-            "00:00:00:28.486",
-            "00:00:04:47.403",
-            "512 pending 0.2s",
-            79,
-        );
+        let line = format_live_status(LiveStatus {
+            checked: 25_983,
+            recent_rate: 1_017.0,
+            average_rate: 912.11,
+            cpu_candidates: 12_889,
+            cpu_rate: 477.0,
+            gpu_candidates: 12_800,
+            gpu_rate: 536.0,
+            elapsed: "00:00:00:28.486",
+            eta: "00:00:04:47.403",
+            gpu_status: "512 pending 0.2s",
+            max_width: 79,
+        });
         assert!(line.len() <= 79, "{line:?} has {} columns", line.len());
         assert!(line.contains("checked"));
         assert!(line.contains("CPU"));
         assert!(line.contains("GPU"));
         assert!(line.contains("ETA"));
 
-        let narrow = format_live_status(
-            25_983,
-            1_017.0,
-            912.11,
-            12_889,
-            477.0,
-            12_800,
-            536.0,
-            "00:00:00:28.486",
-            "00:00:04:47.403",
-            "512 pending 0.2s",
-            38,
-        );
+        let narrow = format_live_status(LiveStatus {
+            checked: 25_983,
+            recent_rate: 1_017.0,
+            average_rate: 912.11,
+            cpu_candidates: 12_889,
+            cpu_rate: 477.0,
+            gpu_candidates: 12_800,
+            gpu_rate: 536.0,
+            elapsed: "00:00:00:28.486",
+            eta: "00:00:04:47.403",
+            gpu_status: "512 pending 0.2s",
+            max_width: 38,
+        });
         assert!(
             narrow.len() <= 38,
             "{narrow:?} has {} columns",

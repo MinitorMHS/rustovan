@@ -77,7 +77,7 @@ impl D3d11SeedEngine {
         let mut shader = None;
         unsafe {
             device
-                .CreateComputeShader(&shader_bytecode, None, Some(&mut shader))
+                .CreateComputeShader(shader_bytecode, None, Some(&mut shader))
                 .context("D3D11 rejected the compiled PBKDF2 compute shader")?;
         }
         let shader = shader.context("Direct3D 11 returned no compute shader")?;
@@ -488,7 +488,7 @@ pub fn device_info() -> Result<(String, String)> {
 fn raw_srv_desc(byte_size: usize) -> Result<D3D11_SHADER_RESOURCE_VIEW_DESC> {
     let elements = u32::try_from(byte_size / size_of::<u32>())
         .context("D3D11 raw shader-resource view exceeds its element limit")?;
-    if elements == 0 || byte_size % size_of::<u32>() != 0 {
+    if elements == 0 || !byte_size.is_multiple_of(size_of::<u32>()) {
         anyhow::bail!(
             "D3D11 raw shader-resource buffer size must be a nonzero multiple of 4 bytes"
         );
@@ -509,7 +509,7 @@ fn raw_srv_desc(byte_size: usize) -> Result<D3D11_SHADER_RESOURCE_VIEW_DESC> {
 fn raw_uav_desc(byte_size: usize) -> Result<D3D11_UNORDERED_ACCESS_VIEW_DESC> {
     let elements = u32::try_from(byte_size / size_of::<u32>())
         .context("D3D11 raw unordered-access view exceeds its element limit")?;
-    if elements == 0 || byte_size % size_of::<u32>() != 0 {
+    if elements == 0 || !byte_size.is_multiple_of(size_of::<u32>()) {
         anyhow::bail!(
             "D3D11 raw unordered-access buffer size must be a nonzero multiple of 4 bytes"
         );
@@ -563,9 +563,11 @@ fn wgsl_to_hlsl() -> Result<String> {
     )
     .validate(&module)
     .map_err(|error| anyhow!("PBKDF2 WGSL validation failed: {error}"))?;
-    let mut options = naga::back::hlsl::Options::default();
-    options.shader_model = naga::back::hlsl::ShaderModel::V5_0;
-    options.fake_missing_bindings = false;
+    let mut options = naga::back::hlsl::Options {
+        shader_model: naga::back::hlsl::ShaderModel::V5_0,
+        fake_missing_bindings: false,
+        ..Default::default()
+    };
     for (_, variable) in module.global_variables.iter() {
         if let Some(binding) = &variable.binding {
             options.binding_map.insert(

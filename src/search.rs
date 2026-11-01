@@ -1004,16 +1004,16 @@ fn search_gpu_with_backend(
     };
     progress.mark_search_work_started();
     if cfg.gpu_devices > 1 {
-        return search_gpu_on_multiple_devices(
+        return search_gpu_on_multiple_devices(MultiDeviceSearch {
             cfg,
             counter,
             progress,
             backend,
-            engine,
+            first_engine: engine,
             dispatch_batch_size,
             hybrid_lane,
-            check_pool.as_ref(),
-        );
+            check_pool: check_pool.as_ref(),
+        });
     }
     search_gpu_engine_loop(
         cfg,
@@ -1027,16 +1027,29 @@ fn search_gpu_with_backend(
 }
 
 #[cfg(feature = "gpu")]
-fn search_gpu_on_multiple_devices(
-    cfg: &SearchConfig,
-    counter: &AtomicU64,
-    progress: &SearchProgress,
+struct MultiDeviceSearch<'a> {
+    cfg: &'a SearchConfig,
+    counter: &'a AtomicU64,
+    progress: &'a SearchProgress,
     backend: GpuBackend,
     first_engine: AutoGpuEngine,
     dispatch_batch_size: usize,
     hybrid_lane: bool,
-    check_pool: Option<&rayon::ThreadPool>,
-) -> Result<FoundWallet> {
+    check_pool: Option<&'a rayon::ThreadPool>,
+}
+
+#[cfg(feature = "gpu")]
+fn search_gpu_on_multiple_devices(request: MultiDeviceSearch<'_>) -> Result<FoundWallet> {
+    let MultiDeviceSearch {
+        cfg,
+        counter,
+        progress,
+        backend,
+        first_engine,
+        dispatch_batch_size,
+        hybrid_lane,
+        check_pool,
+    } = request;
     let available = AutoGpuEngine::available_device_count(backend)?;
     let maximum_workers = selected_gpu_worker_count(cfg.gpu_devices, available);
     if available < cfg.gpu_devices {
@@ -1174,10 +1187,11 @@ fn search_gpu_engine_loop(
             let batch_len = match reserve_batch_len(cfg, counter, requested_reservation) {
                 Ok(batch_len) => batch_len,
                 Err(limit_error) => {
-                    if let Some(task) = pending_result.take() {
-                        if let Some(found) = join_gpu_result_task(task)? {
-                            return Ok(found);
-                        }
+                    if let Some(found) = match pending_result.take() {
+                        Some(task) => join_gpu_result_task(task)?,
+                        None => None,
+                    } {
+                        return Ok(found);
                     }
                     return Err(limit_error);
                 }
@@ -1469,7 +1483,9 @@ fn benchmark_mnemonic(candidate_index: u64) -> Result<Mnemonic> {
     // BIP39 inputs while still varying mnemonic lengths and word indices.
     let mut state = candidate_index ^ 0x544f_4e5f_4245_4e43;
     let mut entropy = [0u8; 16];
-    for chunk in entropy.chunks_exact_mut(8) {
+    let (chunks, remainder) = entropy.as_chunks_mut::<8>();
+    debug_assert!(remainder.is_empty());
+    for chunk in chunks {
         state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
         let mut mixed = state;
         mixed = (mixed ^ (mixed >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
@@ -1602,7 +1618,7 @@ fn benchmark_cpu_for_window(
 enum AutoGpuEngine {
     Wgpu(GpuSeedEngine),
     #[cfg(feature = "opencl")]
-    OpenCl(crate::gpu::opencl::OpenClSeedEngine),
+    OpenCl(Box<crate::gpu::opencl::OpenClSeedEngine>),
     #[cfg(all(feature = "d3d11", target_os = "windows"))]
     Dx11(crate::gpu::d3d11::D3d11SeedEngine),
     #[cfg(feature = "cuda")]
@@ -1674,7 +1690,7 @@ impl AutoGpuEngine {
             let engine =
                 crate::gpu::opencl::OpenClSeedEngine::new_for_device(cfg.gpu_batch, device_index)?;
             engine.self_test()?;
-            return Ok(Self::OpenCl(engine));
+            return Ok(Self::OpenCl(Box::new(engine)));
         }
         #[cfg(not(feature = "opencl"))]
         if backend == GpuBackend::OpenCl {
@@ -1968,9 +1984,9 @@ fn tune_gpu_dispatch_size(
             }
             Err(error) => {
                 if !has_verified_size {
-                    return Err(error).context(format!(
-                        "GPU dispatch tuning failed before any dispatch size was verified"
-                    ));
+                    return Err(error).context(
+                        "GPU dispatch tuning failed before any dispatch size was verified",
+                    );
                 }
                 eprintln!(
                     "gpu_dispatch_tuning=size:{size} failed; recreating backend and rechecking size {best_size}: {error:#}"
@@ -2605,16 +2621,29 @@ fn safe_auto_gpu_benchmark(
 }
 
 #[cfg(feature = "gpu")]
-fn safe_auto_hybrid_benchmark(
-    cfg: &SearchConfig,
+struct AutoHybridBenchmark<'a> {
+    cfg: &'a SearchConfig,
     backend: GpuBackend,
-    engine: &AutoGpuEngine,
-    cpu_pool: &rayon::ThreadPool,
-    gpu_result_pool: Option<&rayon::ThreadPool>,
+    engine: &'a AutoGpuEngine,
+    cpu_pool: &'a rayon::ThreadPool,
+    gpu_result_pool: Option<&'a rayon::ThreadPool>,
     schedule: HybridSchedule,
     gpu_batch_len: usize,
-    warmup_seeds: &[[u8; 64]],
-) -> Result<(u64, u64, Duration)> {
+    warmup_seeds: &'a [[u8; 64]],
+}
+
+#[cfg(feature = "gpu")]
+fn safe_auto_hybrid_benchmark(request: AutoHybridBenchmark<'_>) -> Result<(u64, u64, Duration)> {
+    let AutoHybridBenchmark {
+        cfg,
+        backend,
+        engine,
+        cpu_pool,
+        gpu_result_pool,
+        schedule,
+        gpu_batch_len,
+        warmup_seeds,
+    } = request;
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         benchmark_hybrid_for_window(
             cfg,
@@ -2907,16 +2936,16 @@ fn choose_auto_route(cfg: &SearchConfig) -> Result<AutoRoute> {
                     continue;
                 }
             };
-            match safe_auto_hybrid_benchmark(
+            match safe_auto_hybrid_benchmark(AutoHybridBenchmark {
                 cfg,
                 backend,
-                &engine,
-                &profile_cpu_pool,
-                Some(&profile_gpu_result_pool),
+                engine: &engine,
+                cpu_pool: &profile_cpu_pool,
+                gpu_result_pool: Some(&profile_gpu_result_pool),
                 schedule,
-                dispatch_batch_len,
-                &hybrid_warmup_seeds,
-            ) {
+                gpu_batch_len: dispatch_batch_len,
+                warmup_seeds: &hybrid_warmup_seeds,
+            }) {
                 Ok((cpu_candidates, gpu_candidates, elapsed)) => {
                     let projected_candidates = cpu_candidates
                         .saturating_add(gpu_candidates.saturating_mul(worker_count as u64));
@@ -3083,16 +3112,16 @@ fn choose_hybrid_gpu_route(
                     continue;
                 }
             };
-            match safe_auto_hybrid_benchmark(
+            match safe_auto_hybrid_benchmark(AutoHybridBenchmark {
                 cfg,
                 backend,
-                &engine,
-                &profile_cpu_pool,
-                Some(&profile_gpu_result_pool),
+                engine: &engine,
+                cpu_pool: &profile_cpu_pool,
+                gpu_result_pool: Some(&profile_gpu_result_pool),
                 schedule,
-                dispatch_batch_len,
-                &hybrid_warmup_seeds,
-            ) {
+                gpu_batch_len: dispatch_batch_len,
+                warmup_seeds: &hybrid_warmup_seeds,
+            }) {
                 Ok((cpu_candidates, gpu_candidates, elapsed)) => {
                     let projected_candidates = cpu_candidates
                         .saturating_add(gpu_candidates.saturating_mul(worker_count as u64));
@@ -3154,7 +3183,7 @@ pub fn search_auto(
     }
     #[cfg(feature = "gpu")]
     {
-        return match choose_auto_route(cfg)? {
+        match choose_auto_route(cfg)? {
             AutoRoute::Cpu => search_cpu(cfg, counter, progress),
             AutoRoute::Gpu(backend, dispatch_batch_size) => {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -3201,7 +3230,7 @@ pub fn search_auto(
                     Some(schedule),
                 )
             }
-        };
+        }
     }
     #[cfg(not(feature = "gpu"))]
     {
@@ -3276,7 +3305,7 @@ fn search_hybrid_with_preferred_gpu(
                 .join(" -> ")
         ));
         let (sender, receiver) = std::sync::mpsc::channel::<Result<FoundWallet>>();
-        let result = std::thread::scope(|scope| {
+        std::thread::scope(|scope| {
             let cpu_sender = sender.clone();
             let gpu_sender = sender.clone();
             scope.spawn(move || {
@@ -3342,8 +3371,7 @@ fn search_hybrid_with_preferred_gpu(
                 .into_iter()
                 .next()
                 .unwrap_or_else(|| anyhow!("hybrid search stopped without a result")))
-        });
-        result
+        })
     }
     #[cfg(not(feature = "gpu"))]
     {

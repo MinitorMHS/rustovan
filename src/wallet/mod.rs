@@ -165,8 +165,8 @@ pub fn derive_address(
         subwallet,
         bounceable,
     )?;
-    Ok(String::from_utf8(encoded.to_vec())
-        .map_err(|_| anyhow!("friendly address encoder returned invalid UTF-8"))?)
+    String::from_utf8(encoded.to_vec())
+        .map_err(|_| anyhow!("friendly address encoder returned invalid UTF-8"))
 }
 
 pub fn derive_friendly_address_bytes(

@@ -101,7 +101,9 @@ jobs:
         if: matrix.platform == 'android'
         run: |
           set -euo pipefail
-          sdkmanager --install "ndk;27.2.12479018"
+          sdkmanager="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$sdkmanager"
+          "$sdkmanager" --install "ndk;27.2.12479018"
           ndk_root="${ANDROID_HOME}/ndk/27.2.12479018"
           test -d "$ndk_root"
           toolchain="$ndk_root/toolchains/llvm/prebuilt/linux-x86_64/bin"

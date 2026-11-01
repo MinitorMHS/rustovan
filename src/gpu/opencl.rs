@@ -614,7 +614,7 @@ impl OpenClSeedEngine {
             "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
         )
         .map_err(|error| anyhow!("BIP39 vector parse failed: {error}"))?;
-        let batch = vec![mnemonic; self.batch_size.min(4).max(1)];
+        let batch = vec![mnemonic; self.batch_size.clamp(1, 4)];
         for passphrase in ["", "TREZOR", "passphrase-ñ"] {
             let actual = Zeroizing::new(self.derive_batch(&batch, passphrase)?);
             let expected = Zeroizing::new(
@@ -828,8 +828,15 @@ impl OpenClSeedEngine {
             },
             "clEnqueueReadBuffer",
         )?;
+        let (chunks, remainder) = output.as_chunks::<64>();
+        if !remainder.is_empty() {
+            buffers.wipe()?;
+            anyhow::bail!(
+                "OpenCL PBKDF2 returned a byte count that is not divisible by the seed size"
+            );
+        }
         let mut seeds = Zeroizing::new(Vec::with_capacity(mnemonics.len()));
-        for bytes in output.chunks_exact(64) {
+        for bytes in chunks {
             let mut seed = [0u8; 64];
             seed.copy_from_slice(bytes);
             seeds.push(seed);
