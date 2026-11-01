@@ -9,6 +9,7 @@
 [![Downloads](https://img.shields.io/github/downloads/MinitorMHS/rustovan/total)](https://github.com/MinitorMHS/rustovan/releases)
 [![Contributors](https://img.shields.io/github/contributors/MinitorMHS/rustovan)](https://github.com/MinitorMHS/rustovan/graphs/contributors)
 [![Last Commit](https://img.shields.io/github/last-commit/MinitorMHS/rustovan)](https://github.com/MinitorMHS/rustovan/commits/main)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
 **Search newly generated TON wallets for a matching address.**
 
@@ -48,6 +49,7 @@ on the CPU.
 -   [Release binaries](#release-binaries)
 -   [Development and validation](#development-and-validation)
 -   [Documentation](#documentation)
+-   [License](#license)
 
 ## Features
 
@@ -605,6 +607,10 @@ production-readiness gaps.
 -   [Dependency license inventory](docs/dependency-license-inventory.md)
 -   [Security policy](SECURITY.md)
 -   [Current readiness status](STATUS.md)
+
+## License
+
+Rustovan is licensed under the GNU General Public License v3.0. You may use, modify, and redistribute it under the terms of the license. If you distribute Rustovan or modified versions, you must comply with the GPL-3.0 requirements. See [LICENSE](LICENSE) for the full license text.
 
 ------------------------------------------------------------------------
 
