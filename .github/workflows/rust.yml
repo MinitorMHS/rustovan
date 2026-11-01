@@ -167,6 +167,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ${{ matrix.packages }}
           echo "CARGO_TARGET_${{ matrix.cargo_target }}_LINKER=${{ matrix.linker }}" >> "$GITHUB_ENV"
+          case "${{ matrix.target }}" in
+            armv7-unknown-linux-gnueabihf)
+              echo "CC_armv7_unknown_linux_gnueabihf=arm-linux-gnueabihf-gcc" >> "$GITHUB_ENV"
+              echo "AR_armv7_unknown_linux_gnueabihf=arm-linux-gnueabihf-ar" >> "$GITHUB_ENV"
+              ;;
+            riscv64gc-unknown-linux-gnu)
+              echo "CC_riscv64gc_unknown_linux_gnu=riscv64-linux-gnu-gcc" >> "$GITHUB_ENV"
+              echo "AR_riscv64gc_unknown_linux_gnu=riscv64-linux-gnu-ar" >> "$GITHUB_ENV"
+              ;;
+            x86_64-unknown-linux-musl)
+              echo "CC_x86_64_unknown_linux_musl=musl-gcc" >> "$GITHUB_ENV"
+              echo "AR_x86_64_unknown_linux_musl=ar" >> "$GITHUB_ENV"
+              ;;
+          esac
 
       - name: Install stable Rust and target
         uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
@@ -175,7 +189,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Build release executable for Linux target
-        run: cargo build --release --locked --target "${{ matrix.target }}"
+        run: cargo build --release --locked --target "${{ matrix.target }}" --features cross-openssl
 
   linux-arm64-musl:
     name: Linux ARM64 musl cross-target build
@@ -192,6 +206,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y musl-tools
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc" >> "$GITHUB_ENV"
+          echo "CC_aarch64_unknown_linux_musl=musl-gcc" >> "$GITHUB_ENV"
+          echo "AR_aarch64_unknown_linux_musl=ar" >> "$GITHUB_ENV"
 
       - name: Install stable Rust and ARM64 musl target
         uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
@@ -200,7 +216,7 @@ jobs:
           targets: aarch64-unknown-linux-musl
 
       - name: Build release executable for ARM64 musl
-        run: cargo build --release --locked --target aarch64-unknown-linux-musl
+        run: cargo build --release --locked --target aarch64-unknown-linux-musl --features cross-openssl
 
   macos:
     name: macOS build and tests (Metal compile coverage)
