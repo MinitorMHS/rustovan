@@ -3,7 +3,7 @@ name = "rustovan"
 version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-only"
-description = "TON vanity wallet generator with BIP39 multichain derivation and pluggable CPU/GPU backends"
+description = "TON vanity wallet generator with BIP39 derivation and pluggable CPU/GPU backends"
 autobins = false
 
 [[bin]]
@@ -43,7 +43,7 @@ sha2 = "0.10"
 ton = "0.4.5"
 unicode-normalization = "0.1.25"
 zeroize = { version = "1", features = ["derive"] }
-age = { version = "0.12.1", default-features = false, optional = true }
+age = { git = "https://github.com/str4d/rage.git", rev = "b5b68c4f4f7ea5c368bc060f6fe0237549c3a13f", default-features = false, optional = true }
 
 # wgpu native backends (OpenGL/GLES, DX12, Metal, Vulkan), plus runtime-loaded OpenCL; CUDA requires the native Toolkit.
 wgpu = { version = "30", default-features = false, features = ["gles", "wgsl"], optional = true }

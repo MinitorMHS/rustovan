@@ -61,7 +61,7 @@ struct Cli {
         global = true,
         value_enum,
         default_value = "all",
-        help = "How supplied match criteria combine: all requires every criterion; any stops at the first criterion that matches"
+        help = "How supplied match criteria combine: all finds a separate wallet for each criterion; any stops at the first wallet matching any criterion"
     )]
     match_mode: MatchMode,
     #[arg(
@@ -356,9 +356,71 @@ fn commit_secret_file(temp_path: &Path, target: &Path) -> std::io::Result<()> {
     fs::hard_link(temp_path, target)
 }
 
-fn serialize_wallet_secrets(found: &[(Option<String>, FoundWallet)]) -> Result<Zeroizing<String>> {
+struct WalletExportMetadata {
+    wallet_version: String,
+    network: &'static str,
+    workchain: i8,
+    bounceable: bool,
+    account: u32,
+    derivation_path: String,
+    bip39_passphrase_set: bool,
+    wallet_id: Option<i32>,
+}
+
+fn wallet_export_metadata(cfg: &SearchConfig) -> Result<WalletExportMetadata> {
+    let derivation_path = if cfg.wallet == WalletVersion::WalletTg {
+        "m/44'/607'/0'".to_string()
+    } else {
+        format!("m/44'/607'/{}'", cfg.account)
+    };
+    let wallet_id = if cfg.wallet == WalletVersion::V5R1 {
+        Some(rustovan::wallet::v5r1_wallet_id(
+            cfg.network,
+            0,
+            0,
+            cfg.account,
+        )?)
+    } else {
+        None
+    };
+    Ok(WalletExportMetadata {
+        wallet_version: cfg.wallet.name().to_string(),
+        network: match cfg.network {
+            Network::Mainnet => "mainnet",
+            Network::Testnet => "testnet",
+        },
+        workchain: 0,
+        bounceable: cfg.bounceable,
+        account: cfg.account,
+        derivation_path,
+        bip39_passphrase_set: !cfg.passphrase.is_empty(),
+        wallet_id,
+    })
+}
+
+fn serialize_wallet_secrets(
+    found: &[(Option<String>, FoundWallet)],
+    metadata: &WalletExportMetadata,
+) -> Result<Zeroizing<String>> {
     use std::fmt::Write as FmtWrite;
     let mut contents = Zeroizing::new(String::new());
+    writeln!(contents, "format=rustovan-wallet-export-v1")?;
+    writeln!(contents, "generator_version={}", env!("CARGO_PKG_VERSION"))?;
+    writeln!(contents, "wallet_version={}", metadata.wallet_version)?;
+    writeln!(contents, "network={}", metadata.network)?;
+    writeln!(contents, "workchain={}", metadata.workchain)?;
+    writeln!(contents, "bounceable={}", metadata.bounceable)?;
+    writeln!(contents, "account={}", metadata.account)?;
+    writeln!(contents, "derivation_path={}", metadata.derivation_path)?;
+    writeln!(
+        contents,
+        "bip39_passphrase_set={}",
+        metadata.bip39_passphrase_set
+    )?;
+    writeln!(contents, "private_key_format=ed25519-seed-hex")?;
+    if let Some(wallet_id) = metadata.wallet_id {
+        writeln!(contents, "wallet_id={wallet_id}")?;
+    }
     if found.len() == 1 {
         let (criterion, wallet) = &found[0];
         if let Some(criterion) = criterion {
@@ -382,13 +444,20 @@ fn serialize_wallet_secrets(found: &[(Option<String>, FoundWallet)]) -> Result<Z
 }
 
 fn write_protected_file(path: &Path, contents: &[u8]) -> Result<()> {
+    write_protected_file_with(path, |file| file.write_all(contents))
+}
+
+fn write_protected_file_with(
+    path: &Path,
+    write_contents: impl FnOnce(&mut File) -> std::io::Result<()>,
+) -> Result<()> {
     let (temp, mut file) = create_secret_temp_file(path).with_context(|| {
         format!(
             "could not create a protected temporary output file beside {}",
             path.display()
         )
     })?;
-    if let Err(error) = file.write_all(contents).and_then(|_| file.sync_all()) {
+    if let Err(error) = write_contents(&mut file).and_then(|_| file.sync_all()) {
         drop(file);
         return Err(error).with_context(|| {
             format!(
@@ -463,15 +532,19 @@ fn embedded_age_recipient() -> Result<EmbeddedAgeRecipient> {
     parse_age_recipient(env!("TON_VANITY_AGE_RECIPIENT"))
 }
 
-fn write_secret_file(path: &Path, found: &[(Option<String>, FoundWallet)]) -> Result<()> {
+fn write_secret_file(
+    path: &Path,
+    found: &[(Option<String>, FoundWallet)],
+    metadata: &WalletExportMetadata,
+) -> Result<()> {
     #[cfg(feature = "sealed-output")]
     {
         let recipient = embedded_age_recipient()?;
-        write_secret_file_to_recipient(path, found, &recipient)
+        write_secret_file_to_recipient(path, found, metadata, &recipient)
     }
     #[cfg(not(feature = "sealed-output"))]
     {
-        let contents = serialize_wallet_secrets(found)?;
+        let contents = serialize_wallet_secrets(found, metadata)?;
         write_protected_file(path, contents.as_bytes())
     }
 }
@@ -480,9 +553,10 @@ fn write_secret_file(path: &Path, found: &[(Option<String>, FoundWallet)]) -> Re
 fn write_secret_file_to_recipient(
     path: &Path,
     found: &[(Option<String>, FoundWallet)],
+    metadata: &WalletExportMetadata,
     recipient: &EmbeddedAgeRecipient,
 ) -> Result<()> {
-    let contents = serialize_wallet_secrets(found)?;
+    let contents = serialize_wallet_secrets(found, metadata)?;
     let ciphertext = encrypt_wallet_contents(contents.as_bytes(), recipient)?;
     write_protected_file(path, &ciphertext)
 }
@@ -645,13 +719,12 @@ fn spawn_progress_reporter(
             let gpu_rate = gpu_candidates.saturating_sub(window_gpu) as f64 / window_elapsed;
             let elapsed = now.duration_since(work_started);
             let average_rate = checked as f64 / elapsed.as_secs_f64().max(0.001);
-            let eta = if expected_candidates == u64::MAX {
+            let expected_total = if expected_candidates == u64::MAX {
                 "unknown".to_string()
             } else if checked == 0 || average_rate <= 0.0 {
                 "pending".to_string()
             } else {
-                let remaining = expected_candidates.saturating_sub(checked);
-                let seconds = remaining as f64 / average_rate;
+                let seconds = expected_candidates as f64 / average_rate;
                 if seconds.is_finite() && seconds < u64::MAX as f64 {
                     format_elapsed(Duration::from_secs_f64(seconds))
                 } else {
@@ -699,7 +772,7 @@ fn spawn_progress_reporter(
                 gpu_candidates,
                 gpu_rate,
                 elapsed: &elapsed,
-                eta: &eta,
+                expected_total: &expected_total,
                 gpu_status: &gpu_status,
                 max_width: terminal_columns().saturating_sub(1).max(1),
             });
@@ -739,7 +812,7 @@ struct LiveStatus<'a> {
     gpu_candidates: u64,
     gpu_rate: f64,
     elapsed: &'a str,
-    eta: &'a str,
+    expected_total: &'a str,
     gpu_status: &'a str,
     max_width: usize,
 }
@@ -754,21 +827,21 @@ fn format_live_status(status: LiveStatus<'_>) -> String {
         gpu_candidates,
         gpu_rate,
         elapsed,
-        eta,
+        expected_total,
         gpu_status,
         max_width,
     } = status;
     let full = format!(
-        "{checked} checked | {recent_rate:.0}/s (avg {average_rate:.0}) | CPU {cpu_candidates} ({cpu_rate:.0}/s) + GPU {gpu_candidates} ({gpu_rate:.0}/s) | {elapsed} | ETA {eta} | GPU {gpu_status}"
+        "{checked} checked | {recent_rate:.0}/s (avg {average_rate:.0}) | CPU {cpu_candidates} ({cpu_rate:.0}/s) + GPU {gpu_candidates} ({gpu_rate:.0}/s) | elapsed {elapsed} | mean total {expected_total} | GPU {gpu_status}"
     );
     if full.len() <= max_width {
         return full;
     }
 
     let elapsed = compact_duration(elapsed);
-    let eta = compact_duration(eta);
+    let expected_total = compact_duration(expected_total);
     let compact = format!(
-        "{} checked|{}/s|CPU{}/{} GPU{}/{}|{}|ETA {}",
+        "{} checked|{}/s|CPU{}/{} GPU{}/{}|{}|mean {}",
         compact_quantity(checked as f64),
         compact_quantity(recent_rate),
         compact_quantity(cpu_candidates as f64),
@@ -776,17 +849,17 @@ fn format_live_status(status: LiveStatus<'_>) -> String {
         compact_quantity(gpu_candidates as f64),
         compact_quantity(gpu_rate),
         elapsed,
-        eta,
+        expected_total,
     );
     if compact.len() <= max_width {
         return compact;
     }
 
     let minimal = format!(
-        "{}|{}/s|ETA {}",
+        "{}|{}/s|mean {}",
         compact_quantity(checked as f64),
         compact_quantity(recent_rate),
-        eta,
+        expected_total,
     );
     minimal.chars().take(max_width).collect()
 }
@@ -869,8 +942,43 @@ fn daemon_state_dir() -> PathBuf {
                 .join("ton-vanity-rust")
                 .join("daemon");
         }
+        let legacy = env::temp_dir().join("ton-vanity-rust").join("daemon");
+        if is_private_daemon_dir(&legacy) {
+            return legacy;
+        }
+        return env::temp_dir().join(format!("rustovan-daemon-{}", libc::geteuid()));
     }
     env::temp_dir().join("ton-vanity-rust").join("daemon")
+}
+
+#[cfg(unix)]
+fn is_private_daemon_dir(path: &Path) -> bool {
+    unix_daemon_path_is_trusted(path)
+}
+
+#[cfg(unix)]
+fn unix_daemon_path_is_trusted(path: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    let current_uid = libc::geteuid();
+    for component in path.ancestors() {
+        let Ok(metadata) = fs::symlink_metadata(component) else {
+            return false;
+        };
+        let mode = metadata.mode();
+        let uid = metadata.uid();
+        let safe_owner = uid == current_uid || uid == 0;
+        let safe_permissions = mode & 0o022 == 0 || (uid == 0 && mode & 0o1000 != 0);
+        if !metadata.is_dir()
+            || metadata.file_type().is_symlink()
+            || !safe_owner
+            || !safe_permissions
+        {
+            return false;
+        }
+    }
+    fs::symlink_metadata(path)
+        .is_ok_and(|metadata| metadata.uid() == current_uid && metadata.mode() & 0o077 == 0)
 }
 
 fn daemon_file(dir: &Path, name: &str) -> PathBuf {
@@ -941,9 +1049,21 @@ fn write_daemon_text(path: &Path, text: &str) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
+        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
     }
     let mut file = options.open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        if !file.metadata()?.is_file() {
+            anyhow::bail!("daemon state file is not a regular file");
+        }
+        file.set_permissions(fs::Permissions::from_mode(0o600))?;
+        let metadata = file.metadata()?;
+        if metadata.uid() != libc::geteuid() || metadata.mode() & 0o077 != 0 {
+            anyhow::bail!("daemon state file permissions are not private");
+        }
+    }
     file.write_all(text.as_bytes())?;
     file.flush()?;
     Ok(())
@@ -990,13 +1110,229 @@ fn daemon_status(dir: &Path) -> String {
     }
 }
 fn ensure_daemon_dir(dir: &Path) -> Result<()> {
-    fs::create_dir_all(dir)
-        .with_context(|| format!("could not create daemon state directory {}", dir.display()))?;
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
+        use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
+
+        let mut builder = fs::DirBuilder::new();
+        builder.recursive(true).mode(0o700);
+        builder.create(dir).with_context(|| {
+            format!("could not create daemon state directory {}", dir.display())
+        })?;
+        if !unix_daemon_path_is_trusted(dir) {
+            anyhow::bail!("daemon state path contains an unsafe owner, permission, or symlink");
+        }
+
+        // Open the final component without following a symlink, then change
+        // permissions through the open descriptor instead of chmod-by-path.
+        let mut options = fs::OpenOptions::new();
+        options
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW);
+        let directory = options.open(dir).with_context(|| {
+            format!(
+                "daemon state path {} is not a safe directory",
+                dir.display()
+            )
+        })?;
+        let metadata = directory.metadata()?;
+        if metadata.uid() != libc::geteuid() {
+            anyhow::bail!("daemon state directory is owned by another user");
+        }
+        directory.set_permissions(fs::Permissions::from_mode(0o700))?;
+        if directory.metadata()?.mode() & 0o077 != 0 {
+            anyhow::bail!("daemon state directory is not private");
+        }
     }
+    #[cfg(all(not(unix), not(windows)))]
+    {
+        fs::create_dir_all(dir).with_context(|| {
+            format!("could not create daemon state directory {}", dir.display())
+        })?;
+    }
+    #[cfg(windows)]
+    {
+        if let Some(app_dir) = dir.parent().filter(|path| !path.as_os_str().is_empty()) {
+            fs::create_dir_all(app_dir).with_context(|| {
+                format!(
+                    "could not create daemon app directory {}",
+                    app_dir.display()
+                )
+            })?;
+            secure_windows_daemon_directory(app_dir)?;
+        }
+        match fs::create_dir(dir) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("could not create daemon state directory {}", dir.display())
+                });
+            }
+        }
+        secure_windows_daemon_directory(dir)?;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn secure_windows_daemon_directory(path: &Path) -> Result<()> {
+    use std::{os::windows::io::FromRawHandle, ptr};
+    use windows_sys::Win32::{
+        Foundation::{INVALID_HANDLE_VALUE, LocalFree},
+        Security::Authorization::{
+            ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
+            GetSecurityInfo, SDDL_REVISION_1, SE_FILE_OBJECT, SetSecurityInfo,
+        },
+        Security::{
+            DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl, OWNER_SECURITY_INFORMATION,
+            PROTECTED_DACL_SECURITY_INFORMATION,
+        },
+        Storage::FileSystem::{
+            CreateFileW, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
+            FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ, OPEN_EXISTING, READ_CONTROL, WRITE_DAC,
+        },
+    };
+
+    let path_wide = path_to_wide(path)?;
+    // Open the directory object itself so a final-component junction or
+    // symlink cannot redirect the ACL update to another location.
+    let handle = unsafe {
+        CreateFileW(
+            path_wide.as_ptr(),
+            READ_CONTROL | WRITE_DAC | FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ,
+            ptr::null(),
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+            ptr::null_mut(),
+        )
+    };
+    if handle == INVALID_HANDLE_VALUE {
+        return Err(std::io::Error::last_os_error())
+            .with_context(|| format!("could not open daemon directory {}", path.display()));
+    }
+    // SAFETY: CreateFileW returned a valid handle whose ownership is transferred to File.
+    let directory = unsafe { std::fs::File::from_raw_handle(handle) };
+    use std::os::windows::fs::MetadataExt;
+    let metadata = directory.metadata()?;
+    let attributes = metadata.file_attributes();
+    if attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 || attributes & FILE_ATTRIBUTE_DIRECTORY == 0
+    {
+        anyhow::bail!(
+            "daemon state path {} is not a regular directory",
+            path.display()
+        );
+    }
+
+    let mut owner_sid = ptr::null_mut();
+    let mut owner_descriptor = ptr::null_mut();
+    // SAFETY: handle is valid and the returned descriptor and SID pointers are writable.
+    let owner_status = unsafe {
+        GetSecurityInfo(
+            handle,
+            SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            &mut owner_sid,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            &mut owner_descriptor,
+        )
+    };
+    if owner_status != 0 {
+        return Err(std::io::Error::from_raw_os_error(owner_status as i32))
+            .context("could not read daemon-directory owner");
+    }
+    let mut owner_sid_string = ptr::null_mut();
+    // SAFETY: owner_sid is returned by GetSecurityInfo and owner_sid_string is writable.
+    let sid_converted = unsafe { ConvertSidToStringSidW(owner_sid, &mut owner_sid_string) };
+    if sid_converted == 0 {
+        // SAFETY: descriptor was allocated by GetSecurityInfo.
+        unsafe { LocalFree(owner_descriptor) };
+        return Err(std::io::Error::last_os_error())
+            .context("could not format daemon-directory owner SID");
+    }
+    let sid_length = unsafe {
+        let mut length = 0;
+        while *owner_sid_string.add(length) != 0 {
+            length += 1;
+        }
+        length
+    };
+    // SAFETY: ConvertSidToStringSidW returned a NUL-terminated UTF-16 SID string.
+    let owner_sid_text = unsafe {
+        String::from_utf16(std::slice::from_raw_parts(owner_sid_string, sid_length))
+            .context("daemon-directory owner SID is not valid UTF-16")
+    };
+    // SAFETY: both allocations are owned by the respective Windows APIs.
+    unsafe {
+        LocalFree(owner_sid_string as _);
+        LocalFree(owner_descriptor as _);
+    }
+    let owner_sid_text = owner_sid_text?;
+    let sddl = format!("D:P(A;OICI;FA;;;{owner_sid_text})")
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let mut descriptor = ptr::null_mut();
+    let mut descriptor_len = 0;
+    // SAFETY: The SDDL is NUL-terminated UTF-16 and the output pointers are writable.
+    let converted = unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            sddl.as_ptr(),
+            SDDL_REVISION_1,
+            &mut descriptor,
+            &mut descriptor_len,
+        )
+    };
+    if converted == 0 {
+        return Err(std::io::Error::last_os_error())
+            .context("could not construct a private daemon-directory ACL");
+    }
+
+    let mut dacl = ptr::null_mut();
+    let mut dacl_present = 0;
+    let mut dacl_defaulted = 0;
+    // SAFETY: descriptor was returned by the SDDL conversion API; output pointers are writable.
+    let dacl_result = unsafe {
+        GetSecurityDescriptorDacl(
+            descriptor,
+            &mut dacl_present,
+            &mut dacl,
+            &mut dacl_defaulted,
+        )
+    };
+    let result = if dacl_result == 0 {
+        Err(std::io::Error::last_os_error())
+            .context("could not read the private daemon-directory ACL")
+    } else if dacl_present == 0 || dacl.is_null() {
+        Err(anyhow::anyhow!("private daemon-directory ACL has no DACL"))
+    } else {
+        // SAFETY: The handle is open for WRITE_DAC and dacl remains alive until this call returns.
+        let status = unsafe {
+            SetSecurityInfo(
+                handle,
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                dacl,
+                ptr::null_mut(),
+            )
+        };
+        if status == 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::from_raw_os_error(status as i32))
+                .context("could not apply a private daemon-directory ACL")
+        }
+    };
+    // SAFETY: The descriptor was allocated by ConvertStringSecurityDescriptorToSecurityDescriptorW.
+    unsafe { LocalFree(descriptor) };
+    result?;
+    drop(directory);
     Ok(())
 }
 
@@ -1010,8 +1346,14 @@ fn daemon_passphrase_from_stdin() -> Result<Zeroizing<String>> {
     }
     let mut bytes = Zeroizing::new(vec![0u8; length as usize]);
     stdin.read_exact(&mut bytes)?;
-    let value = String::from_utf8(std::mem::take(&mut *bytes))
-        .context("daemon passphrase input was not valid UTF-8")?;
+    let value = match String::from_utf8(std::mem::take(&mut *bytes)) {
+        Ok(value) => value,
+        Err(error) => {
+            // FromUtf8Error owns the rejected input; zero it before returning.
+            let _rejected_bytes = Zeroizing::new(error.into_bytes());
+            anyhow::bail!("daemon passphrase input was not valid UTF-8");
+        }
+    };
     Ok(Zeroizing::new(value))
 }
 
@@ -1186,7 +1528,11 @@ fn run_daemon_command(action: DaemonAction, cli: &Cli) -> Result<()> {
                 network == Network::Testnet,
             );
             let matcher = Matcher {
-                prefix: normalize_friendly_prefixes(cli.prefix.clone(), &header[..2]),
+                prefix: normalize_friendly_prefixes(
+                    cli.prefix.clone(),
+                    &header[..2],
+                    cli.case_sensitive,
+                )?,
                 suffix: cli.suffix.clone(),
                 exact: cli.exact.clone(),
                 mode: cli.match_mode,
@@ -1508,7 +1854,7 @@ fn main() -> Result<()> {
     let header =
         rustovan::address::friendly_address(0, [0; 32], c.bounceable, network == Network::Testnet);
     let matcher = Matcher {
-        prefix: normalize_friendly_prefixes(c.prefix, &header[..2]),
+        prefix: normalize_friendly_prefixes(c.prefix, &header[..2], c.case_sensitive)?,
         suffix: c.suffix,
         exact: c.exact,
         mode: c.match_mode,
@@ -1716,7 +2062,8 @@ fn main() -> Result<()> {
         );
         #[cfg(feature = "sealed-output")]
         eprintln!("writing age-encrypted wallet result to {}", path.display());
-        write_secret_file(path, &found_wallets)?;
+        let metadata = wallet_export_metadata(&cfg)?;
+        write_secret_file(path, &found_wallets, &metadata)?;
         #[cfg(not(feature = "sealed-output"))]
         println!("secrets_saved={}", path.display());
         #[cfg(feature = "sealed-output")]
@@ -1780,6 +2127,19 @@ mod runtime_output_tests {
     impl Drop for ScratchDir {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn test_export_metadata() -> WalletExportMetadata {
+        WalletExportMetadata {
+            wallet_version: "v4r2".into(),
+            network: "mainnet",
+            workchain: 0,
+            bounceable: false,
+            account: 0,
+            derivation_path: "m/44'/607'/0'".into(),
+            bip39_passphrase_set: false,
+            wallet_id: None,
         }
     }
 
@@ -1852,6 +2212,98 @@ mod runtime_output_tests {
         ];
         remove_output_arguments(&mut args);
         assert_eq!(args, [OsString::from("--backend"), OsString::from("cpu")]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn daemon_directory_setup_applies_private_windows_acl() {
+        let scratch = ScratchDir::new();
+        let app_dir = scratch.0.join("rustovan");
+        let daemon_dir = app_dir.join("daemon");
+
+        ensure_daemon_dir(&daemon_dir).expect("daemon directory should be secured");
+        assert_windows_owner_only_directory(&app_dir);
+        assert_windows_owner_only_directory(&daemon_dir);
+    }
+
+    #[cfg(windows)]
+    fn assert_windows_owner_only_directory(path: &Path) {
+        use windows_sys::Win32::{
+            Foundation::LocalFree,
+            Security::Authorization::{GetNamedSecurityInfoW, SE_FILE_OBJECT},
+            Security::{
+                ACL_SIZE_INFORMATION, AclSizeInformation, DACL_SECURITY_INFORMATION, EqualSid,
+                GetAce, GetAclInformation, GetSecurityDescriptorControl,
+                OWNER_SECURITY_INFORMATION, SE_DACL_PROTECTED,
+            },
+            Storage::FileSystem::FILE_ALL_ACCESS,
+        };
+
+        let path_wide = path_to_wide(path).unwrap();
+        let mut owner = std::ptr::null_mut();
+        let mut dacl = std::ptr::null_mut();
+        let mut descriptor = std::ptr::null_mut();
+        // SAFETY: the path is NUL-terminated UTF-16; output pointers are writable.
+        let status = unsafe {
+            GetNamedSecurityInfoW(
+                path_wide.as_ptr(),
+                SE_FILE_OBJECT,
+                OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+                &mut owner,
+                std::ptr::null_mut(),
+                &mut dacl,
+                std::ptr::null_mut(),
+                &mut descriptor,
+            )
+        };
+        assert_eq!(status, 0, "could not read ACL for {}", path.display());
+        assert!(!owner.is_null());
+        assert!(!dacl.is_null());
+
+        let mut control = 0;
+        let mut revision = 0;
+        // SAFETY: descriptor was returned by GetNamedSecurityInfoW.
+        assert_ne!(
+            unsafe { GetSecurityDescriptorControl(descriptor, &mut control, &mut revision) },
+            0
+        );
+        assert_ne!(control & SE_DACL_PROTECTED, 0);
+
+        let mut acl_info = ACL_SIZE_INFORMATION::default();
+        // SAFETY: dacl is valid for the lifetime of descriptor and acl_info is writable.
+        assert_ne!(
+            unsafe {
+                GetAclInformation(
+                    dacl,
+                    (&mut acl_info as *mut ACL_SIZE_INFORMATION).cast(),
+                    std::mem::size_of::<ACL_SIZE_INFORMATION>() as u32,
+                    AclSizeInformation,
+                )
+            },
+            0
+        );
+        assert_eq!(
+            acl_info.AceCount, 1,
+            "ACL must grant access to one principal"
+        );
+
+        let mut ace_ptr = std::ptr::null_mut();
+        // SAFETY: dacl has the one ACE confirmed above.
+        assert_ne!(unsafe { GetAce(dacl, 0, &mut ace_ptr) }, 0);
+        // SAFETY: the SDDL creates a basic ACCESS_ALLOWED_ACE as its only ACE.
+        let ace = unsafe { &*ace_ptr.cast::<windows_sys::Win32::Security::ACCESS_ALLOWED_ACE>() };
+        assert_eq!(ace.Header.AceType, 0, "expected an allow ACE");
+        assert_eq!(ace.Mask, FILE_ALL_ACCESS);
+        assert_eq!(
+            ace.Header.AceFlags & 0x03,
+            0x03,
+            "owner ACE must be inheritable"
+        );
+        let ace_sid = std::ptr::addr_of!(ace.SidStart).cast_mut().cast();
+        // SAFETY: both SIDs are valid within the ACL/security descriptor allocations.
+        assert_ne!(unsafe { EqualSid(owner, ace_sid) }, 0);
+        // SAFETY: descriptor was allocated by GetNamedSecurityInfoW.
+        unsafe { LocalFree(descriptor as _) };
     }
 
     #[test]
@@ -1929,7 +2381,7 @@ mod runtime_output_tests {
     }
 
     #[test]
-    fn live_status_fits_one_terminal_row_and_keeps_lane_rates_and_eta() {
+    fn live_status_fits_one_row_and_labels_expected_total_time() {
         let line = format_live_status(LiveStatus {
             checked: 25_983,
             recent_rate: 1_017.0,
@@ -1939,7 +2391,7 @@ mod runtime_output_tests {
             gpu_candidates: 12_800,
             gpu_rate: 536.0,
             elapsed: "00:00:00:28.486",
-            eta: "00:00:04:47.403",
+            expected_total: "00:00:04:47.403",
             gpu_status: "512 pending 0.2s",
             max_width: 79,
         });
@@ -1947,7 +2399,7 @@ mod runtime_output_tests {
         assert!(line.contains("checked"));
         assert!(line.contains("CPU"));
         assert!(line.contains("GPU"));
-        assert!(line.contains("ETA"));
+        assert!(line.contains("mean"));
 
         let narrow = format_live_status(LiveStatus {
             checked: 25_983,
@@ -1958,7 +2410,7 @@ mod runtime_output_tests {
             gpu_candidates: 12_800,
             gpu_rate: 536.0,
             elapsed: "00:00:00:28.486",
-            eta: "00:00:04:47.403",
+            expected_total: "00:00:04:47.403",
             gpu_status: "512 pending 0.2s",
             max_width: 38,
         });
@@ -1967,8 +2419,23 @@ mod runtime_output_tests {
             "{narrow:?} has {} columns",
             narrow.len()
         );
-        assert!(narrow.contains("ETA"));
+        assert!(narrow.contains("mean"));
     }
+
+    #[test]
+    fn partial_secret_write_failure_cleans_temporary_file_without_publishing() {
+        let scratch = ScratchDir::new();
+        let target = scratch.0.join("wallet.txt");
+        let result = write_protected_file_with(&target, |file| {
+            file.write_all(b"partial synthetic wallet secret")?;
+            Err(std::io::Error::other("injected write failure"))
+        });
+
+        assert!(result.is_err());
+        assert!(!target.exists());
+        assert_eq!(fs::read_dir(&scratch.0).unwrap().count(), 0);
+    }
+
     #[cfg(not(feature = "sealed-output"))]
     #[test]
     fn secret_output_commits_once_and_never_overwrites() {
@@ -1980,12 +2447,25 @@ mod runtime_output_tests {
             private_key_hex: "synthetic-key".into(),
         };
         let expected = concat!(
+            "format=rustovan-wallet-export-v1\n",
+            "generator_version=",
+            env!("CARGO_PKG_VERSION"),
+            "\n",
+            "wallet_version=v4r2\n",
+            "network=mainnet\n",
+            "workchain=0\n",
+            "bounceable=false\n",
+            "account=0\n",
+            "derivation_path=m/44'/607'/0'\n",
+            "bip39_passphrase_set=false\n",
+            "private_key_format=ed25519-seed-hex\n",
             "address=synthetic-address\n",
             "mnemonic=synthetic mnemonic\n",
             "private_key=synthetic-key\n"
         );
 
-        write_secret_file(&target, &[(None, found)])
+        let metadata = test_export_metadata();
+        write_secret_file(&target, &[(None, found)], &metadata)
             .expect("first secret-file commit should succeed");
         assert_eq!(fs::read_to_string(&target).unwrap(), expected);
 
@@ -1994,7 +2474,7 @@ mod runtime_output_tests {
             mnemonic: "replacement mnemonic".into(),
             private_key_hex: "replacement-key".into(),
         };
-        assert!(write_secret_file(&target, &[(None, replacement)]).is_err());
+        assert!(write_secret_file(&target, &[(None, replacement)], &metadata).is_err());
         assert_eq!(fs::read_to_string(&target).unwrap(), expected);
         assert_eq!(fs::read_dir(&scratch.0).unwrap().count(), 1);
     }
@@ -2022,7 +2502,8 @@ mod runtime_output_tests {
                 },
             ),
         ];
-        write_secret_file(&target, &wallets).unwrap();
+        let metadata = test_export_metadata();
+        write_secret_file(&target, &wallets, &metadata).unwrap();
         let contents = fs::read_to_string(&target).unwrap();
         assert!(
             contents
@@ -2063,7 +2544,8 @@ mod runtime_output_tests {
             mnemonic: "synthetic phrase".into(),
             private_key_hex: "synthetic-key".into(),
         };
-        write_secret_file_to_recipient(&target, &[(None, wallet)], &recipient).unwrap();
+        let metadata = test_export_metadata();
+        write_secret_file_to_recipient(&target, &[(None, wallet)], &metadata, &recipient).unwrap();
 
         let encrypted = fs::read(&target).unwrap();
         assert!(

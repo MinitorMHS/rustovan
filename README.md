@@ -164,10 +164,12 @@ Windows PowerShell:
 
 ### Installation security
 
-The installer verifies the downloaded package against the SHA-256
-manifest published in the same release. This detects corruption and
-mismatches, but the manifest is not a cryptographic signature and does
-not protect against a compromised release account or repository.
+The installer checks the package against the SHA-256 manifest published
+in the same release. New releases from the workflow publish a detached
+OpenPGP signature for that manifest after release signing is configured.
+The installer does not yet verify the signature automatically; manual
+signature verification requires the release public key and a fingerprint
+obtained independently of the release assets.
 
 The commands above execute the current installer from the repository's
 `main` branch. Review [install.sh](install.sh) or
@@ -213,6 +215,13 @@ rustovan --backend auto --wallet v5r1 --suffix yyy --output ./wallet-secrets.txt
 > Without `--output` or `--show-secrets`, generated wallet credentials
 > are not recoverable. `--show-secrets` prints credentials to stdout,
 > where terminal recording or shell logs may capture them.
+
+The text export begins with `format=rustovan-wallet-export-v1` and records
+the wallet version, network, bounceability, account, derivation path, and
+whether a BIP39 passphrase was set. It never stores the passphrase itself;
+when `bip39_passphrase_set=true`, you must keep the exact passphrase with
+your recovery backup. The export also records the format of the 32-byte
+Ed25519 private-key seed in hexadecimal.
 
 ## Use cases
 
@@ -315,10 +324,13 @@ are `0Q` (non-bounceable) and `kQ` (bounceable).
 Prefix and suffix matching is case-insensitive by default. To search for
 a suffix beginning with a hyphen, use `--suffix=-xxx`.
 
-If the prefix already contains a recognized header (`UQ`, `EQ`, `0Q`, or
-`kQ`), it is used as supplied. Exact searches require `--max-candidates`
-because random wallet generation cannot feasibly target an arbitrary
-address directly.
+If a prefix already contains a recognized header (`UQ`, `EQ`, `0Q`, or
+`kQ`), it must match the selected network and bounceability mode. Rustovan
+rejects conflicting headers instead of beginning a search that cannot
+match. Exact addresses are also checked against the selected header and
+generated workchain before search. Exact searches require
+`--max-candidates` because random wallet generation cannot feasibly target
+an arbitrary address directly.
 
 ### WalletTg limitations
 
@@ -532,8 +544,21 @@ cargo build --release --locked --features cuda
 ## Release binaries
 
 Download the package for your operating system and architecture from
-[GitHub Releases](https://github.com/MinitorMHS/rustovan/releases). Each
-release includes `SHA256SUMS.txt` for package verification.
+[GitHub Releases](https://github.com/MinitorMHS/rustovan/releases). Releases
+created after release signing is configured include `SHA256SUMS.txt` and
+the detached signature `SHA256SUMS.txt.asc`.
+
+After importing the Rustovan release public key, check its full
+fingerprint against a value published through a separate trusted channel.
+Then verify the manifest signature and the package checksum:
+
+``` sh
+gpg --verify SHA256SUMS.txt.asc SHA256SUMS.txt
+sha256sum --check SHA256SUMS.txt
+```
+
+On Windows, use `Get-FileHash -Algorithm SHA256` to compare a package hash
+with its entry in the verified manifest.
 
 ### Supported release targets
 

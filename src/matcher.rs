@@ -129,6 +129,36 @@ impl Matcher {
         Ok(())
     }
 
+    /// Validate exact addresses against the address representation this search
+    /// will emit. An address with a valid checksum but a different network or
+    /// bounceability tag can never match a generated result.
+    pub fn validate_for_output_format(
+        &self,
+        bounceable: bool,
+        testnet: bool,
+        workchain: i8,
+    ) -> Result<()> {
+        self.validate()?;
+        let expected_tag = (if bounceable { 0x11 } else { 0x51 }) | if testnet { 0x80 } else { 0 };
+        for exact in &self.exact {
+            let decoded = URL_SAFE_NO_PAD
+                .decode(exact)
+                .map_err(|_| anyhow!("exact TON address is not valid base64url"))?;
+            if decoded[0] != expected_tag {
+                return Err(anyhow!(
+                    "exact TON address uses a different network or bounceability tag than this search"
+                ));
+            }
+            if decoded[1] != workchain as u8 {
+                return Err(anyhow!(
+                    "exact TON address uses workchain {}, but this search generates workchain {workchain}",
+                    decoded[1] as i8
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub fn matches(&self, address: &str) -> bool {
         // This predicate answers whether a single candidate matched any
         // requested criterion. MatchMode::All is handled by SearchProgress,
@@ -181,31 +211,61 @@ impl Matcher {
 }
 
 /// Make short vanity prefixes target the variable part of a TON friendly address.
-/// A complete or partial known address header is kept literal; other values are
-/// prefixed with the header selected by the current network/bounceability mode.
-pub fn normalize_friendly_prefixes(prefixes: Vec<String>, active_header: &str) -> Vec<String> {
+/// A compatible complete or partial header is kept literal; an incompatible
+/// known header is rejected before an unbounded search can run forever.
+pub fn normalize_friendly_prefixes(
+    prefixes: Vec<String>,
+    active_header: &str,
+    case_sensitive: bool,
+) -> Result<Vec<String>> {
     const HEADERS: [&str; 4] = ["UQ", "EQ", "0Q", "kQ"];
 
     prefixes
         .into_iter()
         .map(|prefix| {
-            let is_header_qualified = HEADERS.iter().any(|header| {
-                prefix.len() >= header.len()
+            let supplied_header = HEADERS.iter().find(|header| {
+                prefix.len() >= 2
                     && prefix
-                        .get(..header.len())
+                        .get(..2)
                         .is_some_and(|head| head.eq_ignore_ascii_case(header))
             });
-            let is_partial_header = HEADERS.iter().any(|header| {
-                prefix.len() < header.len()
-                    && header
-                        .get(..prefix.len())
-                        .is_some_and(|head| head.eq_ignore_ascii_case(&prefix))
-            });
-            if is_header_qualified || is_partial_header {
-                prefix
-            } else {
-                format!("{active_header}{prefix}")
+            if let Some(header) = supplied_header {
+                if !header.eq_ignore_ascii_case(active_header) {
+                    return Err(anyhow!(
+                        "prefix {prefix:?} specifies TON header {header}, but the selected network/address mode generates {active_header} addresses"
+                    ));
+                }
+                if case_sensitive && prefix.get(..2) != Some(active_header) {
+                    return Err(anyhow!(
+                        "prefix {prefix:?} has header casing that cannot match the selected {active_header} address format with --case-sensitive"
+                    ));
+                }
+                return Ok(prefix);
             }
+            if prefix.len() == 1 {
+                let could_be_header = HEADERS.iter().any(|header| {
+                    header
+                        .get(..1)
+                        .is_some_and(|head| head.eq_ignore_ascii_case(&prefix))
+                });
+                if could_be_header {
+                    if !active_header
+                        .get(..1)
+                        .is_some_and(|head| head.eq_ignore_ascii_case(&prefix))
+                    {
+                        return Err(anyhow!(
+                            "prefix {prefix:?} is the start of a different TON address header than the selected {active_header} format"
+                        ));
+                    }
+                    if case_sensitive && active_header.get(..1) != Some(prefix.as_str()) {
+                        return Err(anyhow!(
+                            "prefix {prefix:?} has header casing that cannot match the selected {active_header} address format with --case-sensitive"
+                        ));
+                    }
+                    return Ok(prefix);
+                }
+            }
+            Ok(format!("{active_header}{prefix}"))
         })
         .collect()
 }
@@ -286,14 +346,14 @@ mod tests {
 
     #[test]
     fn bare_prefixes_are_scoped_after_selected_friendly_address_header() {
-        let prefixes = vec!["yyy".into(), "UQabc".into(), "EQdef".into(), "U".into()];
+        let prefixes = vec!["yyy".into(), "UQabc".into(), "U".into()];
         assert_eq!(
-            normalize_friendly_prefixes(prefixes, "UQ"),
-            ["UQyyy", "UQabc", "EQdef", "U"]
+            normalize_friendly_prefixes(prefixes, "UQ", false).unwrap(),
+            ["UQyyy", "UQabc", "U"]
         );
 
         assert_eq!(
-            normalize_friendly_prefixes(vec!["yyy".into(), "-xxx".into()], "kQ"),
+            normalize_friendly_prefixes(vec!["yyy".into(), "-xxx".into()], "kQ", false).unwrap(),
             ["kQyyy", "kQ-xxx"]
         );
     }

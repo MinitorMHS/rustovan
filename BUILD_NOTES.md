@@ -1,6 +1,6 @@
 # Build notes
 
-**Documentation snapshot: 2026-11-01.**
+**Documentation snapshot: 2026-11-02.**
 
 ## Build configuration
 
@@ -24,4 +24,4 @@ The CUDA build script selects nvcc.exe, MSVC object/library extensions, and the 
 
 ## Remaining release checks
 
-Production readiness remains blocked by the current dependency audit findings, stale dependency-license inventory, clean-machine packaging and secret-file failure-path checks, physical Apple Metal/multi-GPU testing, CUDA verification, sustained cross-device performance, and independent provenance for legacy wallet fixtures. See [STATUS.md](STATUS.md) and [RELEASE_PLAN.md](RELEASE_PLAN.md).
+Production readiness remains blocked by post-change CI/audit confirmation, the documented basic-toml build-tool advisory exception, the stale dependency-license inventory, clean-machine packaging, forced-termination behavior for protected staging files, physical Apple Metal/multi-GPU testing, CUDA verification, sustained cross-device performance, and independent provenance for legacy wallet fixtures. See [STATUS.md](STATUS.md) and [RELEASE_PLAN.md](RELEASE_PLAN.md).

@@ -336,7 +336,11 @@ pub struct SearchConfig {
 
 impl SearchConfig {
     pub fn validate(&self) -> Result<()> {
-        self.matcher.validate()?;
+        self.matcher.validate_for_output_format(
+            self.bounceable,
+            self.network == Network::Testnet,
+            0,
+        )?;
         if self.account > 0x7fff_ffff {
             anyhow::bail!("account index must be <= 2147483647");
         }
@@ -3806,7 +3810,7 @@ mod tests {
                 prefix: if exact { vec![] } else { vec!["UQ".into()] },
                 suffix: vec![],
                 exact: if exact {
-                    vec![crate::address::friendly_address(0, [0; 32], true, false)]
+                    vec![crate::address::friendly_address(0, [0; 32], false, false)]
                 } else {
                     vec![]
                 },

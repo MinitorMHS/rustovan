@@ -33,6 +33,10 @@ jobs:
           PUBLISH_RELEASE: ${{ inputs.publish_release }}
         run: |
           set -euo pipefail
+          if [[ "${PUBLISH_RELEASE}" == "true" && "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "Releases may only be published from the main branch (current ref: ${GITHUB_REF})." >&2
+            exit 1
+          fi
           tag_pattern='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
           if [[ ! "${TAG_NAME}" =~ $tag_pattern ]]; then
             echo "tag_name must be a stable semantic version such as v1.0.0 (got ${TAG_NAME})" >&2
@@ -272,6 +276,8 @@ jobs:
     if: ${{ inputs.publish_release }}
     needs: [validate, build]
     runs-on: ubuntu-latest
+    environment:
+      name: release-signing
     permissions:
       contents: write
     steps:
@@ -308,6 +314,48 @@ jobs:
 
       - name: Generate checksums
         run: cd dist && sha256sum * > SHA256SUMS.txt
+
+      - name: Sign checksum manifest with OpenPGP
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_FINGERPRINT: ${{ vars.GPG_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GPG_PRIVATE_KEY}" || -z "${GPG_PASSPHRASE}" || -z "${GPG_FINGERPRINT}" ]]; then
+            echo "The release-signing environment must define GPG_PRIVATE_KEY, GPG_PASSPHRASE, and GPG_FINGERPRINT." >&2
+            exit 1
+          fi
+
+          fingerprint="$(printf '%s' "${GPG_FINGERPRINT}" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
+          if [[ ! "${fingerprint}" =~ ^([A-F0-9]{40}|[A-F0-9]{64})$ ]]; then
+            echo "GPG_FINGERPRINT must be a full 40- or 64-character hexadecimal fingerprint." >&2
+            exit 1
+          fi
+
+          umask 077
+          export GNUPGHOME="$(mktemp -d)"
+          status_file="$(mktemp)"
+          cleanup() {
+            gpgconf --homedir "${GNUPGHOME}" --kill all >/dev/null 2>&1 || true
+            rm -f -- "${status_file}"
+            rm -rf -- "${GNUPGHOME}"
+          }
+          trap cleanup EXIT
+
+          printf '%s' "${GPG_PRIVATE_KEY}" | gpg --batch --import
+          imported_fingerprint="$(gpg --batch --with-colons --list-secret-keys "${fingerprint}" | awk -F: '$1 == "fpr" { print toupper($10); exit }')"
+          if [[ "${imported_fingerprint}" != "${fingerprint}" ]]; then
+            echo "The imported secret key does not match GPG_FINGERPRINT." >&2
+            exit 1
+          fi
+
+          printf '%s\n' "${GPG_PASSPHRASE}" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --local-user "${fingerprint}" --armor --detach-sign --output dist/SHA256SUMS.txt.asc dist/SHA256SUMS.txt
+          gpg --batch --status-fd 3 --verify dist/SHA256SUMS.txt.asc dist/SHA256SUMS.txt 3>"${status_file}"
+          if ! awk -v expected="${fingerprint}" '$2 == "VALIDSIG" && (toupper($3) == expected || (NF >= 12 && toupper($12) == expected)) { valid = 1 } END { exit !valid }' "${status_file}"; then
+            echo "The generated signature did not verify against GPG_FINGERPRINT." >&2
+            exit 1
+          fi
 
       - name: Create release and upload assets
         env:
