@@ -20,34 +20,31 @@ jobs:
           persist-credentials: false
 
       - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
-        with:
-          toolchain: stable
-          components: rustfmt
+        run: rustup toolchain install stable --profile minimal --component rustfmt
 
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        run: cargo +stable fmt --all -- --check
 
       - name: Check cross-check formatting
-        run: cargo fmt --manifest-path tools/rust-ton-crosscheck/Cargo.toml -- --check
+        run: cargo +stable fmt --manifest-path tools/rust-ton-crosscheck/Cargo.toml -- --check
 
       - name: Run unit tests
-        run: cargo test --locked
+        run: cargo +stable test --locked
 
       - name: Run independent Rust TON address cross-check
-        run: cargo run --manifest-path tools/rust-ton-crosscheck/Cargo.toml --release --locked
+        run: cargo +stable run --manifest-path tools/rust-ton-crosscheck/Cargo.toml --release --locked
 
       - name: Run strict Clippy
-        run: cargo clippy --all-targets --locked -- -D warnings
+        run: cargo +stable clippy --all-targets --locked -- -D warnings
 
       - name: Check CPU-only configuration
-        run: cargo check --no-default-features --features cpu --locked
+        run: cargo +stable check --no-default-features --features cpu --locked
 
       - name: Check default configuration
-        run: cargo check --locked
+        run: cargo +stable check --locked
 
       - name: Build release executable
-        run: cargo build --release --locked
+        run: cargo +stable build --release --locked
 
   windows-arm64:
     name: Windows ARM64 release build
@@ -60,13 +57,10 @@ jobs:
           persist-credentials: false
 
       - name: Install stable Rust and ARM64 target
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
-        with:
-          toolchain: stable
-          targets: aarch64-pc-windows-msvc
+        run: rustup toolchain install stable --profile minimal --target aarch64-pc-windows-msvc
 
       - name: Build Windows ARM64 release executable
-        run: cargo build --release --locked --target aarch64-pc-windows-msvc
+        run: cargo +stable build --release --locked --target aarch64-pc-windows-msvc
 
   linux:
     name: Linux build and tests
@@ -82,25 +76,22 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
 
       - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
-        with:
-          toolchain: stable
-          components: rustfmt
+        run: rustup toolchain install stable --profile minimal --component rustfmt
 
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        run: cargo +stable fmt --all -- --check
 
       - name: Run unit tests
-        run: cargo test --locked
+        run: cargo +stable test --locked
 
       - name: Check CPU-only configuration
-        run: cargo check --no-default-features --features cpu --locked
+        run: cargo +stable check --no-default-features --features cpu --locked
 
       - name: Check default GPU configuration
-        run: cargo check --locked
+        run: cargo +stable check --locked
 
       - name: Build release executable
-        run: cargo build --release --locked
+        run: cargo +stable build --release --locked
 
   linux-arm64:
     name: Linux ARM64 build and tests
@@ -116,25 +107,22 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
 
       - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
-        with:
-          toolchain: stable
-          components: rustfmt
+        run: rustup toolchain install stable --profile minimal --component rustfmt
 
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        run: cargo +stable fmt --all -- --check
 
       - name: Run unit tests
-        run: cargo test --locked
+        run: cargo +stable test --locked
 
       - name: Check CPU-only configuration
-        run: cargo check --no-default-features --features cpu --locked
+        run: cargo +stable check --no-default-features --features cpu --locked
 
       - name: Check default GPU configuration
-        run: cargo check --locked
+        run: cargo +stable check --locked
 
       - name: Build release executable
-        run: cargo build --release --locked
+        run: cargo +stable build --release --locked
 
   linux-additional-targets:
     name: Linux cross-target build (${{ matrix.target }})
@@ -183,13 +171,10 @@ jobs:
           esac
 
       - name: Install stable Rust and target
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
-        with:
-          toolchain: stable
-          targets: ${{ matrix.target }}
+        run: rustup toolchain install stable --profile minimal --target "${{ matrix.target }}"
 
       - name: Build release executable for Linux target
-        run: cargo build --release --locked --target "${{ matrix.target }}" --features cross-openssl
+        run: cargo +stable build --release --locked --target "${{ matrix.target }}" --features cross-openssl
 
   linux-arm64-musl:
     name: Linux ARM64 musl cross-target build
@@ -210,13 +195,10 @@ jobs:
           echo "AR_aarch64_unknown_linux_musl=ar" >> "$GITHUB_ENV"
 
       - name: Install stable Rust and ARM64 musl target
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
-        with:
-          toolchain: stable
-          targets: aarch64-unknown-linux-musl
+        run: rustup toolchain install stable --profile minimal --target aarch64-unknown-linux-musl
 
       - name: Build release executable for ARM64 musl
-        run: cargo build --release --locked --target aarch64-unknown-linux-musl --features cross-openssl
+        run: cargo +stable build --release --locked --target aarch64-unknown-linux-musl --features cross-openssl
 
   macos:
     name: macOS build and tests (Metal compile coverage)
@@ -237,23 +219,20 @@ jobs:
           echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> "$GITHUB_ENV"
 
       - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
-        with:
-          toolchain: stable
-          components: rustfmt
+        run: rustup toolchain install stable --profile minimal --component rustfmt
 
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        run: cargo +stable fmt --all -- --check
 
       - name: Run unit tests
-        run: cargo test --locked
+        run: cargo +stable test --locked
 
       - name: Check CPU-only configuration
-        run: cargo check --no-default-features --features cpu --locked
+        run: cargo +stable check --no-default-features --features cpu --locked
 
       - name: Check macOS GPU configuration
-        run: cargo check --locked
+        run: cargo +stable check --locked
 
       - name: Build release executable with Metal support
-        run: cargo build --release --locked
+        run: cargo +stable build --release --locked
 

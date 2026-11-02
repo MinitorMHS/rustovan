@@ -30,16 +30,14 @@ jobs:
           persist-credentials: false
 
       - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
-        with:
-          toolchain: stable
+        run: rustup toolchain install stable --profile minimal
 
       - name: Install cargo-audit
-        run: cargo install cargo-audit --locked --version 0.22.2
+        run: cargo +stable install cargo-audit --locked --version 0.22.2
 
       # cargo-audit scans Cargo.lock without Cargo feature resolution. The
       # remaining exception is an unmaintained TOML parser pulled in only by
       # age's i18n procedural-macro/build tooling; default releases omit age.
       # Do not ignore cryptographic advisories: the age git pin is updated.
       - name: Audit locked dependencies for default releases
-        run: cargo audit --file Cargo.lock --ignore RUSTSEC-2026-0374 --deny warnings
+        run: cargo +stable audit --file Cargo.lock --ignore RUSTSEC-2026-0374 --deny warnings
