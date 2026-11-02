@@ -921,6 +921,13 @@ fn clear_progress_line(width: usize) {
     eprint!("\r{}\r", " ".repeat(width));
     let _ = std::io::stderr().flush();
 }
+#[cfg(unix)]
+fn effective_user_id() -> libc::uid_t {
+    // SAFETY: geteuid has no pointer arguments or caller preconditions; it
+    // returns the effective UID of this process.
+    unsafe { libc::geteuid() }
+}
+
 fn daemon_state_dir() -> PathBuf {
     #[cfg(windows)]
     if let Some(local_app_data) = env::var_os("LOCALAPPDATA") {
@@ -946,7 +953,7 @@ fn daemon_state_dir() -> PathBuf {
         if is_private_daemon_dir(&legacy) {
             return legacy;
         }
-        return env::temp_dir().join(format!("rustovan-daemon-{}", libc::geteuid()));
+        return env::temp_dir().join(format!("rustovan-daemon-{}", effective_user_id()));
     }
     env::temp_dir().join("ton-vanity-rust").join("daemon")
 }
@@ -960,7 +967,7 @@ fn is_private_daemon_dir(path: &Path) -> bool {
 fn unix_daemon_path_is_trusted(path: &Path) -> bool {
     use std::os::unix::fs::MetadataExt;
 
-    let current_uid = libc::geteuid();
+    let current_uid = effective_user_id();
     for component in path.ancestors() {
         let Ok(metadata) = fs::symlink_metadata(component) else {
             return false;
@@ -1060,7 +1067,7 @@ fn write_daemon_text(path: &Path, text: &str) -> Result<()> {
         }
         file.set_permissions(fs::Permissions::from_mode(0o600))?;
         let metadata = file.metadata()?;
-        if metadata.uid() != libc::geteuid() || metadata.mode() & 0o077 != 0 {
+        if metadata.uid() != effective_user_id() || metadata.mode() & 0o077 != 0 {
             anyhow::bail!("daemon state file permissions are not private");
         }
     }
@@ -1136,7 +1143,7 @@ fn ensure_daemon_dir(dir: &Path) -> Result<()> {
             )
         })?;
         let metadata = directory.metadata()?;
-        if metadata.uid() != libc::geteuid() {
+        if metadata.uid() != effective_user_id() {
             anyhow::bail!("daemon state directory is owned by another user");
         }
         directory.set_permissions(fs::Permissions::from_mode(0o700))?;
